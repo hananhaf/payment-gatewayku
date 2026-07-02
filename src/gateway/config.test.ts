@@ -20,4 +20,5 @@ test("applies defaults for optional fields", () => {
   assert.equal(cfg.port, 3000);
   assert.equal(cfg.invoiceTtlMs, 10 * 60 * 1000);
   assert.equal(cfg.maxOffset, 999);
+  assert.equal(cfg.dbPath, "gateway.db");
 });

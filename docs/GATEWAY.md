@@ -15,15 +15,19 @@ matches the amount to the pending invoice and marks it paid.
 | `PORT` | no | Default 3000 |
 | `INVOICE_TTL_MS` | no | Pending invoice lifetime, default 600000 (10 min) |
 | `MAX_OFFSET` | no | Max rupiah added for uniqueness, default 999 |
+| `DB_PATH` | no | Path to the SQLite database file, default `gateway.db` |
 
 ## Deploy to a VPS (Docker)
 ```bash
 docker build -t qris-gateway .
 docker run -d --name qris-gateway --restart unless-stopped -p 3000:3000 \
   -e STATIC_QRIS="..." -e API_KEY="a-strong-secret" \
-  -v /srv/qris-data:/app \
+  -e DB_PATH=/data/gateway.db -v /srv/qris-data:/data \
   qris-gateway
 ```
+Note: mount the persistence volume at a dedicated data directory (e.g. `/data`)
+and point `DB_PATH` into it — do **not** mount over `/app`, since that hides
+the app's `dist/`, `src/`, and `node_modules` built into the image.
 
 ## Public HTTPS (required — the phone must reach it)
 The NotificationListener endpoint must start with `https://`. Two options:

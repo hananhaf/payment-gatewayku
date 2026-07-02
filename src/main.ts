@@ -6,7 +6,7 @@ import { InvoiceStore } from "./gateway/invoices.ts";
 import { createServer } from "./server.ts";
 
 const config = loadConfig();
-const store = new InvoiceStore(openDb(), config);
+const store = new InvoiceStore(openDb(config.dbPath), config);
 const app = createServer(store, config.apiKey);
 
 // Serve the built frontend (produced by `npm run build` into ./dist)

@@ -12,6 +12,7 @@ const API_KEY = "secret";
 async function withServer(fn: (base: string, store: InvoiceStore) => Promise<void>) {
   const cfg: GatewayConfig = {
     staticQris: TEST_QRIS, apiKey: API_KEY, port: 0, invoiceTtlMs: 600000, maxOffset: 999,
+    dbPath: ":memory:",
   };
   const store = new InvoiceStore(openDb(":memory:"), cfg);
   const app = createServer(store, API_KEY);

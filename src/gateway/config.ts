@@ -16,5 +16,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     port: Number(env.PORT ?? 3000),
     invoiceTtlMs: Number(env.INVOICE_TTL_MS ?? 10 * 60 * 1000),
     maxOffset: Number(env.MAX_OFFSET ?? 999),
+    dbPath: env.DB_PATH?.trim() || "gateway.db",
   };
 }

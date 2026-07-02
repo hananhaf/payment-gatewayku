@@ -17,4 +17,5 @@ export interface GatewayConfig {
   port: number;
   invoiceTtlMs: number;
   maxOffset: number;
+  dbPath: string;
 }

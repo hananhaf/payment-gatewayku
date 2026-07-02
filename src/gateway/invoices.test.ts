@@ -7,7 +7,10 @@ import type { GatewayConfig } from "./types.ts";
 const TEST_QRIS = "0002010102115802ID5904Toko6004Kota6304ABCD";
 
 function cfg(): GatewayConfig {
-  return { staticQris: TEST_QRIS, apiKey: "test", port: 0, invoiceTtlMs: 600000, maxOffset: 999 };
+  return {
+    staticQris: TEST_QRIS, apiKey: "test", port: 0, invoiceTtlMs: 600000, maxOffset: 999,
+    dbPath: ":memory:",
+  };
 }
 
 function freshStore(now?: () => number) {
