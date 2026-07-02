@@ -6,3 +6,6 @@ dist
 .DS_Store
 gateway.db
 gateway.db-*
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
