@@ -10,4 +10,12 @@ export default defineConfig({
       "@web": resolve(__dirname, "src/web"),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        checkout: resolve(__dirname, "checkout.html"),
+      },
+    },
+  },
 });
