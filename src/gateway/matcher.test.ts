@@ -30,6 +30,15 @@ test("parseAmount returns null when no amount present", () => {
   assert.equal(parseAmount({}), null);
 });
 
+test("parseAmount accepts a numeric amountDetected without throwing", () => {
+  assert.equal(parseAmount({ amountDetected: 25037 }), 25037);
+});
+
+test("parseAmount returns null for non-string/non-number junk without throwing", () => {
+  assert.equal(parseAmount({ amountDetected: [] as unknown as string }), null);
+  assert.equal(parseAmount({ amountDetected: {} as unknown as string, text: null }), null);
+});
+
 test("selectMatch returns the pending invoice with the exact amount", () => {
   const a = inv({ id: "a", uniqueAmount: 25037, createdAt: 10 });
   const b = inv({ id: "b", uniqueAmount: 50012, createdAt: 20 });

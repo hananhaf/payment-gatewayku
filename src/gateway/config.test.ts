@@ -22,3 +22,10 @@ test("applies defaults for optional fields", () => {
   assert.equal(cfg.maxOffset, 999);
   assert.equal(cfg.dbPath, "gateway.db");
 });
+
+test("throws on non-numeric PORT", () => {
+  assert.throws(
+    () => loadConfig({ STATIC_QRIS: "q", API_KEY: "k", PORT: "abc" } as NodeJS.ProcessEnv),
+    /PORT must be a number/
+  );
+});

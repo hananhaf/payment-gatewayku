@@ -6,14 +6,19 @@ import type { Invoice } from "./types.ts";
  * in the notification text.
  */
 export function parseAmount(payload: {
-  amountDetected?: string | null;
+  amountDetected?: string | number | null;
   text?: string | null;
 }): number | null {
-  const raw = payload.amountDetected?.trim();
-  if (raw && /^\d+$/.test(raw)) return Number(raw);
-
+  const detected = payload.amountDetected;
+  if (typeof detected === "number" && Number.isInteger(detected) && detected > 0) {
+    return detected;
+  }
+  if (typeof detected === "string" && /^\d+$/.test(detected.trim())) {
+    return Number(detected.trim());
+  }
   // Whole-rupiah only; strips '.' and ',' so thousands separators / cents are dropped.
-  const m = (payload.text ?? "").match(/rp\s*([\d.,]+)/i);
+  const text = typeof payload.text === "string" ? payload.text : "";
+  const m = text.match(/rp\s*([\d.,]+)/i);
   if (!m) return null;
   const digits = (m[1] ?? "").replace(/[.,]/g, "");
   if (!/^\d+$/.test(digits)) return null;
