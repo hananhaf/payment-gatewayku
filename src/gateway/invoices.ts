@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import type Database from "better-sqlite3";
 import { convertQRIS } from "../core/index.ts";
 import { selectMatch } from "./matcher.ts";
@@ -54,18 +54,18 @@ export class InvoiceStore {
     this.expireStale();
     const taken = new Set(this.pending().map((i) => i.uniqueAmount));
 
-    let uniqueAmount = 0;
-    for (let attempt = 0; attempt <= this.config.maxOffset; attempt++) {
-      const offset = 1 + Math.floor(Math.random() * this.config.maxOffset);
+    // Collect every free offset in [1, maxOffset], then pick one at random.
+    // Random (not sequential) keeps unique amounts unpredictable; scanning the
+    // whole range guarantees we find a slot whenever one exists.
+    const free: number[] = [];
+    for (let offset = 1; offset <= this.config.maxOffset; offset++) {
       const candidate = baseAmount + offset;
-      if (!taken.has(candidate)) {
-        uniqueAmount = candidate;
-        break;
-      }
+      if (!taken.has(candidate)) free.push(candidate);
     }
-    if (uniqueAmount === 0) {
+    if (free.length === 0) {
       throw new Error("Could not allocate a unique amount; too many pending invoices");
     }
+    const uniqueAmount = free[randomInt(free.length)]!;
 
     const now = this.now();
     const invoice: Invoice = {

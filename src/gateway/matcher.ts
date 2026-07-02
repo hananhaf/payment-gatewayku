@@ -12,10 +12,10 @@ export function parseAmount(payload: {
   const raw = payload.amountDetected?.trim();
   if (raw && /^\d+$/.test(raw)) return Number(raw);
 
-  // ponytail: whole-rupiah only; strips both '.' and ',' so any cents are dropped
+  // Whole-rupiah only; strips '.' and ',' so thousands separators / cents are dropped.
   const m = (payload.text ?? "").match(/rp\s*([\d.,]+)/i);
   if (!m) return null;
-  const digits = m[1].replace(/[.,]/g, "");
+  const digits = (m[1] ?? "").replace(/[.,]/g, "");
   if (!/^\d+$/.test(digits)) return null;
   return Number(digits);
 }
