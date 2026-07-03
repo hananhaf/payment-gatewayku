@@ -1,10 +1,18 @@
 import type { Invoice } from "../../gateway/types";
 
-export async function createInvoice(amount: number): Promise<Invoice> {
+export interface MerchantOption { id: string; name: string; }
+
+export async function getMerchants(): Promise<MerchantOption[]> {
+  const res = await fetch("/api/merchants");
+  if (!res.ok) throw new Error("Gagal memuat merchant");
+  return res.json();
+}
+
+export async function createInvoice(merchantId: string, amount: number): Promise<Invoice> {
   const res = await fetch("/api/invoices", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ merchantId, amount }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
