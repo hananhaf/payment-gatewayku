@@ -3,11 +3,22 @@ import QRCode from "qrcode";
 import { createInvoice, getInvoice, getMerchants, type MerchantOption } from "./api";
 import type { Invoice } from "../../gateway/types";
 
+const rupiah = (n: number) => n.toLocaleString("id-ID");
+
+function mmss(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
 export function Checkout() {
   const [merchants, setMerchants] = useState<MerchantOption[]>([]);
   const [merchantId, setMerchantId] = useState("");
   const [amount, setAmount] = useState("");
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -17,24 +28,25 @@ export function Checkout() {
       .then((list) => {
         setMerchants(list);
         const fromUrl = new URLSearchParams(window.location.search).get("merchant");
-        const initial = list.find((m) => m.id === fromUrl)?.id ?? list[0]?.id ?? "";
-        setMerchantId(initial);
+        setMerchantId(list.find((m) => m.id === fromUrl)?.id ?? list[0]?.id ?? "");
       })
       .catch((e) => setError((e as Error).message));
   }, []);
 
+  // Render QR whenever the (pending/expired) invoice's payload is shown.
   useEffect(() => {
-    if (invoice && canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, invoice.qrString, { width: 260 }).catch(() =>
+    if (invoice && invoice.status !== "paid" && canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, invoice.qrString, { width: 232, margin: 0 }).catch(() =>
         setError("Gagal membuat QR")
       );
     }
-  }, [invoice?.qrString]);
+  }, [invoice?.qrString, invoice?.status]);
 
+  // Poll status + tick the countdown while pending.
   useEffect(() => {
     if (!invoice || invoice.status !== "pending") return;
     let cancelled = false;
-    const timer = setInterval(async () => {
+    const poll = setInterval(async () => {
       try {
         const updated = await getInvoice(invoice.id);
         if (!cancelled) setInvoice(updated);
@@ -42,77 +54,227 @@ export function Checkout() {
         /* keep polling */
       }
     }, 3000);
+    const tick = setInterval(() => !cancelled && setNow(Date.now()), 1000);
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      clearInterval(poll);
+      clearInterval(tick);
     };
   }, [invoice?.id, invoice?.status]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setCreating(true);
     try {
-      setInvoice(await createInvoice(merchantId, Number(amount)));
+      const inv = await createInvoice(merchantId, Number(amount));
+      setNow(Date.now());
+      setInvoice(inv);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setCreating(false);
     }
   }
 
-  if (invoice) {
-    const merchantName = merchants.find((m) => m.id === invoice.merchantId)?.name ?? invoice.merchantId;
+  async function copyAmount() {
+    if (!invoice) return;
+    try {
+      await navigator.clipboard.writeText(String(invoice.uniqueAmount));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  function reset() {
+    setInvoice(null);
+    setAmount("");
+    setCopied(false);
+    setError("");
+  }
+
+  const merchantName = (id: string) => merchants.find((m) => m.id === id)?.name ?? id;
+
+  // ---------- Paid ----------
+  if (invoice?.status === "paid") {
     return (
-      <div style={{ maxWidth: 360, margin: "3rem auto", textAlign: "center" }}>
-        <h1>Scan untuk Membayar</h1>
-        <p style={{ color: "#666" }}>{merchantName}</p>
-        <p>
-          Bayar <strong>tepat</strong>: Rp {invoice.uniqueAmount.toLocaleString("id-ID")}
-        </p>
-        <canvas ref={canvasRef} />
-        {invoice.status === "paid" ? (
-          <p style={{ color: "green", fontWeight: 700 }}>✓ LUNAS</p>
-        ) : invoice.status === "expired" ? (
-          <p style={{ color: "orange" }}>Kedaluwarsa — buat transaksi baru</p>
-        ) : (
-          <p>Menunggu pembayaran…</p>
-        )}
-        <button onClick={() => setInvoice(null)}>Transaksi baru</button>
-      </div>
+      <main className="page">
+        <Wordmark />
+        <section className="card center" role="status" aria-live="polite">
+          <span className="merchant-tag">
+            <StoreIcon /> {merchantName(invoice.merchantId)}
+          </span>
+          <div className="check" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </div>
+          <h2 className="paid-title">Pembayaran Berhasil</h2>
+          <p className="paid-sub">Rp {rupiah(invoice.uniqueAmount)} diterima</p>
+          <button className="btn btn-primary" onClick={reset}>Transaksi Baru</button>
+        </section>
+      </main>
     );
   }
 
+  // ---------- Pending / Expired ----------
+  if (invoice) {
+    const expired = invoice.status === "expired";
+    const remaining = invoice.expiresAt - now;
+    return (
+      <main className="page">
+        <Wordmark />
+        <section className="card center" aria-live="polite">
+          <span className="merchant-tag">
+            <StoreIcon /> {merchantName(invoice.merchantId)}
+          </span>
+          <p className="amount-label">Bayar tepat sejumlah</p>
+          <p className="amount-hero">
+            <span className="cur">Rp</span>
+            <span className="val">{rupiah(invoice.uniqueAmount)}</span>
+          </p>
+          <p className="pay-exact">
+            Nominal <b>harus persis</b> agar terverifikasi otomatis
+          </p>
+          <button
+            className={`copy-btn${copied ? " copied" : ""}`}
+            onClick={copyAmount}
+            type="button"
+          >
+            {copied ? <CheckIcon /> : <CopyIcon />} {copied ? "Tersalin" : "Salin nominal"}
+          </button>
+
+          <div className={`qr-panel${expired ? " done" : ""}`}>
+            <canvas ref={canvasRef} width={232} height={232} />
+          </div>
+
+          {expired ? (
+            <div className="status expired">
+              <ClockIcon /> Kedaluwarsa
+            </div>
+          ) : (
+            <>
+              <div className="status waiting">
+                <span className="pulse" aria-hidden="true" />
+                Menunggu pembayaran
+              </div>
+              <p className="timer">
+                Berlaku <b>{mmss(remaining)}</b> lagi
+              </p>
+            </>
+          )}
+
+          <button className="btn btn-ghost" onClick={reset}>
+            {expired ? "Buat Transaksi Baru" : "Batalkan"}
+          </button>
+        </section>
+        <p className="hint">Pindai dengan aplikasi apa pun berlogo QRIS</p>
+      </main>
+    );
+  }
+
+  // ---------- Form ----------
   return (
-    <form onSubmit={handleCreate} style={{ maxWidth: 360, margin: "3rem auto", textAlign: "center" }}>
-      <h1>QRIS Payment Gateway</h1>
-      <label style={{ display: "block", margin: "1rem 0" }}>
-        Merchant
-        <select
-          value={merchantId}
-          onChange={(e) => setMerchantId(e.target.value)}
-          required
-          style={{ display: "block", width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-        >
-          {merchants.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={{ display: "block", margin: "1rem 0" }}>
-        Jumlah (Rupiah)
-        <input
-          type="number"
-          min="1"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          required
-          style={{ display: "block", width: "100%", padding: "0.5rem", marginTop: "0.25rem" }}
-        />
-      </label>
-      <button type="submit" disabled={!merchantId}>
-        Buat QR Pembayaran
-      </button>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-    </form>
+    <main className="page">
+      <Wordmark />
+      <form className="card" onSubmit={handleCreate}>
+        <h1>Buat Pembayaran</h1>
+        <p className="sub">Masukkan merchant dan nominal untuk membuat QR</p>
+
+        <div className="field">
+          <label htmlFor="merchant">Merchant</label>
+          <select
+            id="merchant"
+            className="select"
+            value={merchantId}
+            onChange={(e) => setMerchantId(e.target.value)}
+            required
+          >
+            {merchants.length === 0 && <option value="">Memuat…</option>}
+            {merchants.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor="amount">Nominal</label>
+          <div className="amount-wrap">
+            <span className="prefix">Rp</span>
+            <input
+              id="amount"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              placeholder="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+
+        <button className="btn btn-primary" type="submit" disabled={!merchantId || creating}>
+          {creating ? <span className="spinner" aria-hidden="true" /> : <QrIcon />}
+          {creating ? "Membuat…" : "Buat QR Pembayaran"}
+        </button>
+
+        {error && (
+          <p className="error" role="alert">
+            <AlertIcon /> {error}
+          </p>
+        )}
+      </form>
+      <a className="hint-link" href="/history.html">Lihat riwayat transaksi →</a>
+    </main>
   );
 }
+
+/* ---------- inline SVG icons (no emoji) ---------- */
+const stroke = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+function Wordmark() {
+  return (
+    <div className="brand">
+      <svg width="16" height="16" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+        <path d="M14 14h3v3M21 21v.01M17 21h.01M21 17v.01" />
+      </svg>
+      QRIS <span className="dot">Payment</span>
+    </div>
+  );
+}
+const StoreIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+    <path d="M3 9 4 4h16l1 5M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9M3 9h18" />
+  </svg>
+);
+const CopyIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+const CheckIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" {...stroke} aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+);
+const ClockIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+);
+const QrIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+    <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17v.01" />
+  </svg>
+);
+const AlertIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
+);
