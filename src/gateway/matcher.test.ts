@@ -6,6 +6,7 @@ import type { Invoice } from "./types.ts";
 function inv(partial: Partial<Invoice>): Invoice {
   return {
     id: "x",
+    merchantId: "m",
     baseAmount: 25000,
     uniqueAmount: 25037,
     qrString: "q",
