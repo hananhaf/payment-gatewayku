@@ -69,3 +69,11 @@ test("throws a clear error on a null array element (not a raw TypeError)", () =>
   const env = { MERCHANTS: "[null]" } as unknown as NodeJS.ProcessEnv;
   assert.throws(() => loadMerchants(env), /merchant #0 is not an object/);
 });
+
+test("loads merchants from MERCHANTS_B64 (base64 of JSON, mangle-proof)", () => {
+  const json = JSON.stringify([{ id: "a", name: "A", qris: QRIS, apiKey: "ka" }]);
+  const b64 = Buffer.from(json, "utf8").toString("base64");
+  const ms = loadMerchants({ MERCHANTS_B64: b64 } as unknown as NodeJS.ProcessEnv);
+  assert.equal(ms.length, 1);
+  assert.equal(ms[0]!.id, "a");
+});
