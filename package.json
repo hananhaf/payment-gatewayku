@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:server",
+    "build:server": "esbuild src/app-factory.ts --bundle --platform=node --format=esm --outfile=dist-server/app-factory.js --packages=external",
     "preview": "vite preview",
     "cli": "tsx src/cli.ts",
     "start": "tsx src/main.ts",

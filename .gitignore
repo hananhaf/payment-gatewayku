@@ -9,3 +9,6 @@ gateway.db-*
 
 # TypeScript incremental build cache
 tsconfig.tsbuildinfo
+
+# Server bundle (built by build:server)
+dist-server
