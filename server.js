@@ -1,43 +1,46 @@
-// Plain-JS entry point for host platforms that start the app with `node server.js`
-// (e.g. Hostinger Node.js Web App). Local/Docker use `npm start` (tsx src/main.ts).
-//
-// Boots the TypeScript app via tsx, then background-builds the frontend if dist/
-// is missing. Verbose startup logging so a host's runtime log shows exactly what
-// happened (which port was assigned, any crash) instead of a silent 503.
+// TEMPORARY DIAGNOSTIC PROBE — replaces the real entry to isolate a host 503.
+// Minimal HTTP server that reports, over HTTP (bypassing the host log viewer),
+// exactly what the runtime environment looks like. Restore the real server.js
+// once we know Hostinger reaches the app and which port it assigns.
+import http from "node:http";
 import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
 
-console.log(
-  `[server.js] boot: node ${process.version} | PORT=${process.env.PORT ?? "(unset)"} | cwd=${process.cwd()}`
-);
+const port = process.env.PORT || 3000;
 
-process.on("uncaughtException", (err) => {
-  console.error("[server.js] uncaughtException:", err);
-  process.exit(1);
-});
-process.on("unhandledRejection", (err) => {
-  console.error("[server.js] unhandledRejection:", err);
-  process.exit(1);
-});
-
-try {
-  const { register } = await import("tsx/esm/api");
-  register();
-  await import("./src/main.ts");
-  console.log("[server.js] main.ts loaded — server should now be listening");
-} catch (err) {
-  console.error("[server.js] FATAL during startup:", err);
-  process.exit(1);
+async function probe() {
+  const out = {
+    ok: true,
+    node: process.version,
+    portResolved: String(port),
+    portEnvRaw: process.env.PORT ?? null,
+    cwd: process.cwd(),
+    distCheckoutExists: existsSync("./dist/checkout.html"),
+    srcMainExists: existsSync("./src/main.ts"),
+    hasStaticQris: Boolean(process.env.STATIC_QRIS),
+    hasApiKey: Boolean(process.env.API_KEY),
+    betterSqlite3: "not-tested",
+    tsx: "not-tested",
+  };
+  try {
+    await import("better-sqlite3");
+    out.betterSqlite3 = "loaded OK";
+  } catch (e) {
+    out.betterSqlite3 = "ERROR: " + e.message;
+  }
+  try {
+    await import("tsx/esm/api");
+    out.tsx = "loaded OK";
+  } catch (e) {
+    out.tsx = "ERROR: " + e.message;
+  }
+  return out;
 }
 
-if (!existsSync("./dist/checkout.html")) {
-  console.log("[server.js] dist/ missing — building frontend in the background...");
-  const build = spawn("npm", ["run", "build"], { stdio: "inherit" });
-  build.on("exit", (code) =>
-    console.log(
-      code === 0
-        ? "[server.js] frontend build complete — checkout page now available"
-        : `[server.js] frontend build failed (exit ${code}); API/webhook still running`
-    )
-  );
-}
+const server = http.createServer(async (_req, res) => {
+  const info = await probe();
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify(info, null, 2));
+});
+
+server.on("error", (e) => console.error("[probe] listen error:", e));
+server.listen(port, () => console.log(`[probe] listening on ${port}`));
