@@ -55,3 +55,28 @@ Caddy provisions TLS automatically.
 
 ## Health check
 `curl https://<your-host>/health` → `{"status":"OK"}`
+
+## Multi-merchant
+
+The gateway serves any number of merchants, each with its own QRIS, webhook key, and device.
+
+**Config (pick one; precedence top→bottom):**
+1. Env `MERCHANTS` — a JSON array (recommended on Hostinger):
+   `[{"id":"nh-pure-water","name":"NH Pure Water","qris":"<static qris>","apiKey":"<secret>"}, ...]`
+2. A gitignored `merchants.json` file with the same shape.
+3. Legacy `STATIC_QRIS` + `API_KEY` → a single merchant with id `default`.
+
+`apiKey` values are secrets — keep them in `MERCHANTS`/`merchants.json`, never commit them.
+
+**Per-device wiring (10 devices, 10 merchants):**
+| Device (merchant) | Endpoint URL | X-API-Key |
+|---|---|---|
+| merchant `nh-pure-water` | `https://payment.bppunh.com/webhook/nh-pure-water` | that merchant's `apiKey` |
+| merchant `merchant-02` | `https://payment.bppunh.com/webhook/merchant-02` | that merchant's `apiKey` |
+| … | … | … |
+
+Each phone must be logged into ITS OWN merchant account so it only forwards that
+account's "dana masuk" notifications.
+
+**Checkout per merchant:** `https://payment.bppunh.com/checkout.html?merchant=<merchantId>`
+(or use the dropdown to pick).
