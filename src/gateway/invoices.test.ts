@@ -74,6 +74,26 @@ test("expired invoices are not settled", () => {
   assert.equal(s.get(a.id)?.status, "expired");
 });
 
+test("listPaid returns only paid invoices, newest first, scoped by merchant", () => {
+  let clock = 1000;
+  const s = store(() => clock);
+  const a1 = s.create("a", 25000);
+  clock += 1;
+  const a2 = s.create("a", 30000);
+  s.create("b", 15000); // stays pending
+  clock += 1;
+  s.settle("a", a1.uniqueAmount);
+  clock += 1;
+  s.settle("a", a2.uniqueAmount); // paid last => should sort first
+
+  const paidA = s.listPaid("a");
+  assert.deepEqual(paidA.map((i) => i.id), [a2.id, a1.id]);
+  assert.ok(paidA.every((i) => i.status === "paid"));
+
+  assert.equal(s.listPaid("b").length, 0); // b's invoice never settled
+  assert.equal(s.listPaid().length, 2); // all merchants
+});
+
 test("same unique amount across two merchants settles only the intended one (deterministic)", () => {
   const cfg: GatewayConfig = { merchants: M, port: 0, invoiceTtlMs: 600000, maxOffset: 1, dbPath: ":memory:" };
   const s = new InvoiceStore(openDb(":memory:"), cfg);

@@ -115,6 +115,19 @@ export class InvoiceStore {
     return row ? rowToInvoice(row) : null;
   }
 
+  // Paid invoices, newest first. Optionally scoped to one merchant.
+  // ponytail: capped at 200 — add pagination if a merchant outgrows one screen.
+  listPaid(merchantId?: string): Invoice[] {
+    const rows = merchantId
+      ? this.db
+          .prepare(`SELECT * FROM invoices WHERE status='paid' AND merchant_id=? ORDER BY paid_at DESC LIMIT 200`)
+          .all(merchantId)
+      : this.db
+          .prepare(`SELECT * FROM invoices WHERE status='paid' ORDER BY paid_at DESC LIMIT 200`)
+          .all();
+    return (rows as Row[]).map(rowToInvoice);
+  }
+
   settle(merchantId: string, amount: number): Invoice | null {
     this.expireStale();
     const match = selectMatch(this.pendingForMerchant(merchantId), amount);

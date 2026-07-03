@@ -47,6 +47,18 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
     }
   });
 
+  // Public: paid transaction history, optionally scoped to ?merchantId=
+  // NOTE: unauthenticated, matching the rest of this app. Gate behind auth before
+  // exposing real merchant revenue publicly.
+  app.get("/api/history", (req, res) => {
+    const merchantId = typeof req.query.merchantId === "string" ? req.query.merchantId : undefined;
+    if (merchantId && !byId.has(merchantId)) {
+      res.status(404).json({ error: `unknown merchant: ${merchantId}` });
+      return;
+    }
+    res.json(store.listPaid(merchantId));
+  });
+
   // Public: poll invoice status
   app.get("/api/invoices/:id", (req, res) => {
     const inv = store.get(req.params.id);
