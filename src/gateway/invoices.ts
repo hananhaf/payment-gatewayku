@@ -2,10 +2,11 @@ import { randomBytes, randomInt } from "node:crypto";
 import type Database from "better-sqlite3";
 import { convertQRIS } from "../core/index.ts";
 import { selectMatch } from "./matcher.ts";
-import type { GatewayConfig, Invoice, InvoiceStatus } from "./types.ts";
+import type { GatewayConfig, Invoice, InvoiceStatus, Merchant } from "./types.ts";
 
 interface Row {
   id: string;
+  merchant_id: string;
   base_amount: number;
   unique_amount: number;
   qr_string: string;
@@ -18,6 +19,7 @@ interface Row {
 function rowToInvoice(row: Row): Invoice {
   return {
     id: row.id,
+    merchantId: row.merchant_id,
     baseAmount: row.base_amount,
     uniqueAmount: row.unique_amount,
     qrString: row.qr_string,
@@ -35,44 +37,51 @@ export class InvoiceStore {
     private now: () => number = () => Date.now()
   ) {}
 
+  private merchant(id: string): Merchant {
+    const m = this.config.merchants.find((x) => x.id === id);
+    if (!m) throw new Error(`unknown merchant: ${id}`);
+    return m;
+  }
+
   expireStale(): void {
     this.db
       .prepare(`UPDATE invoices SET status='expired' WHERE status='pending' AND expires_at < ?`)
       .run(this.now());
   }
 
-  private pending(): Invoice[] {
-    return (this.db.prepare(`SELECT * FROM invoices WHERE status='pending'`).all() as Row[]).map(
-      rowToInvoice
-    );
+  private pendingForMerchant(merchantId: string): Invoice[] {
+    return (
+      this.db
+        .prepare(`SELECT * FROM invoices WHERE merchant_id=? AND status='pending'`)
+        .all(merchantId) as Row[]
+    ).map(rowToInvoice);
   }
 
-  create(baseAmount: number): Invoice {
+  create(merchantId: string, baseAmount: number): Invoice {
+    const merchant = this.merchant(merchantId);
     if (!Number.isInteger(baseAmount) || baseAmount <= 0) {
       throw new Error("baseAmount must be a positive integer (rupiah)");
     }
     this.expireStale();
-    const taken = new Set(this.pending().map((i) => i.uniqueAmount));
+    const taken = new Set(this.pendingForMerchant(merchantId).map((i) => i.uniqueAmount));
 
-    // Collect every free offset in [1, maxOffset], then pick one at random.
-    // Random (not sequential) keeps unique amounts unpredictable; scanning the
-    // whole range guarantees we find a slot whenever one exists.
     const free: number[] = [];
     for (let offset = 1; offset <= this.config.maxOffset; offset++) {
       const candidate = baseAmount + offset;
       if (!taken.has(candidate)) free.push(candidate);
     }
     if (free.length === 0) {
-      throw new Error("Could not allocate a unique amount; too many pending invoices");
+      throw new Error("Could not allocate a unique amount; too many pending invoices for this merchant");
     }
     const uniqueAmount = free[randomInt(free.length)]!;
 
     const now = this.now();
     const invoice: Invoice = {
       id: randomBytes(9).toString("hex"),
+      merchantId,
       baseAmount,
       uniqueAmount,
-      qrString: convertQRIS(this.config.staticQris, { amount: uniqueAmount }),
+      qrString: convertQRIS(merchant.qris, { amount: uniqueAmount }),
       status: "pending",
       createdAt: now,
       expiresAt: now + this.config.invoiceTtlMs,
@@ -82,12 +91,13 @@ export class InvoiceStore {
     this.db
       .prepare(
         `INSERT INTO invoices
-           (id, base_amount, unique_amount, qr_string, status, created_at, expires_at, paid_at)
+           (id, merchant_id, base_amount, unique_amount, qr_string, status, created_at, expires_at, paid_at)
          VALUES
-           (@id, @base_amount, @unique_amount, @qr_string, @status, @created_at, @expires_at, @paid_at)`
+           (@id, @merchant_id, @base_amount, @unique_amount, @qr_string, @status, @created_at, @expires_at, @paid_at)`
       )
       .run({
         id: invoice.id,
+        merchant_id: invoice.merchantId,
         base_amount: invoice.baseAmount,
         unique_amount: invoice.uniqueAmount,
         qr_string: invoice.qrString,
@@ -105,9 +115,9 @@ export class InvoiceStore {
     return row ? rowToInvoice(row) : null;
   }
 
-  settle(amount: number): Invoice | null {
+  settle(merchantId: string, amount: number): Invoice | null {
     this.expireStale();
-    const match = selectMatch(this.pending(), amount);
+    const match = selectMatch(this.pendingForMerchant(merchantId), amount);
     if (!match) return null;
     const paidAt = this.now();
     this.db
