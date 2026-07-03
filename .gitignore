@@ -12,3 +12,6 @@ tsconfig.tsbuildinfo
 
 # Server bundle (built by build:server)
 dist-server
+
+# Real merchant config (secrets + QRIS) — never commit
+merchants.json

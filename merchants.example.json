@@ -1,0 +1,4 @@
+[
+  { "id": "nh-pure-water", "name": "NH Pure Water", "qris": "PASTE_STATIC_QRIS_HERE", "apiKey": "PER_MERCHANT_SECRET_1" },
+  { "id": "merchant-02", "name": "Merchant 02", "qris": "PASTE_STATIC_QRIS_HERE", "apiKey": "PER_MERCHANT_SECRET_2" }
+]

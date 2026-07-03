@@ -14,7 +14,7 @@ import type { GatewayConfig } from "./gateway/types.ts";
 export function buildApp(): { app: express.Express; config: GatewayConfig } {
   const config = loadConfig();
   const store = new InvoiceStore(openDb(config.dbPath), config);
-  const app = createServer(store, config.apiKey);
+  const app = createServer(store, config.merchants);
 
   const dist = path.resolve("dist");
   app.use(express.static(dist));
