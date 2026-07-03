@@ -1,7 +1,15 @@
 export type InvoiceStatus = "pending" | "paid" | "expired";
 
+export interface Merchant {
+  id: string;
+  name: string;
+  qris: string;
+  apiKey: string;
+}
+
 export interface Invoice {
   id: string;
+  merchantId: string;
   baseAmount: number;
   uniqueAmount: number;
   qrString: string;
@@ -12,8 +20,7 @@ export interface Invoice {
 }
 
 export interface GatewayConfig {
-  staticQris: string;
-  apiKey: string;
+  merchants: Merchant[];
   port: number;
   invoiceTtlMs: number;
   maxOffset: number;
