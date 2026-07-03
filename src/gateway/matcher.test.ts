@@ -14,6 +14,8 @@ function inv(partial: Partial<Invoice>): Invoice {
     createdAt: 1,
     expiresAt: 999999,
     paidAt: null,
+    orderId: null,
+    callbackUrl: null,
     ...partial,
   };
 }

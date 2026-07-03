@@ -2,7 +2,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import type Database from "better-sqlite3";
 import { convertQRIS } from "../core/index.ts";
 import { selectMatch } from "./matcher.ts";
-import type { GatewayConfig, Invoice, InvoiceStatus, Merchant } from "./types.ts";
+import type { CreateInvoiceOptions, GatewayConfig, Invoice, InvoiceStatus, Merchant } from "./types.ts";
 
 interface Row {
   id: string;
@@ -14,6 +14,8 @@ interface Row {
   created_at: number;
   expires_at: number;
   paid_at: number | null;
+  order_id: string | null;
+  callback_url: string | null;
 }
 
 function rowToInvoice(row: Row): Invoice {
@@ -27,6 +29,8 @@ function rowToInvoice(row: Row): Invoice {
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     paidAt: row.paid_at ?? null,
+    orderId: row.order_id ?? null,
+    callbackUrl: row.callback_url ?? null,
   };
 }
 
@@ -57,11 +61,32 @@ export class InvoiceStore {
     ).map(rowToInvoice);
   }
 
-  create(merchantId: string, baseAmount: number): Invoice {
+  findByIdempotency(merchantId: string, key: string): Invoice | null {
+    const row = this.db
+      .prepare(`SELECT * FROM invoices WHERE merchant_id=? AND idempotency_key=?`)
+      .get(merchantId, key) as Row | undefined;
+    return row ? rowToInvoice(row) : null;
+  }
+
+  markCallbackSent(id: string): void {
+    this.db.prepare(`UPDATE invoices SET callback_sent=1 WHERE id=?`).run(id);
+  }
+
+  create(merchantId: string, baseAmount: number, opts: CreateInvoiceOptions = {}): Invoice {
     const merchant = this.merchant(merchantId);
     if (!Number.isInteger(baseAmount) || baseAmount <= 0) {
       throw new Error("baseAmount must be a positive integer (rupiah)");
     }
+    const orderId = opts.orderId?.trim() || null;
+    const callbackUrl = opts.callbackUrl?.trim() || null;
+    const idempotencyKey = opts.idempotencyKey?.trim() || null;
+
+    // Idempotent replay: return the existing invoice for this (merchant, key).
+    if (idempotencyKey) {
+      const existing = this.findByIdempotency(merchantId, idempotencyKey);
+      if (existing) return existing;
+    }
+
     this.expireStale();
     const taken = new Set(this.pendingForMerchant(merchantId).map((i) => i.uniqueAmount));
 
@@ -86,14 +111,18 @@ export class InvoiceStore {
       createdAt: now,
       expiresAt: now + this.config.invoiceTtlMs,
       paidAt: null,
+      orderId,
+      callbackUrl,
     };
 
     this.db
       .prepare(
         `INSERT INTO invoices
-           (id, merchant_id, base_amount, unique_amount, qr_string, status, created_at, expires_at, paid_at)
+           (id, merchant_id, base_amount, unique_amount, qr_string, status, created_at, expires_at, paid_at,
+            order_id, callback_url, idempotency_key, callback_sent)
          VALUES
-           (@id, @merchant_id, @base_amount, @unique_amount, @qr_string, @status, @created_at, @expires_at, @paid_at)`
+           (@id, @merchant_id, @base_amount, @unique_amount, @qr_string, @status, @created_at, @expires_at, @paid_at,
+            @order_id, @callback_url, @idempotency_key, 0)`
       )
       .run({
         id: invoice.id,
@@ -105,6 +134,9 @@ export class InvoiceStore {
         created_at: invoice.createdAt,
         expires_at: invoice.expiresAt,
         paid_at: invoice.paidAt,
+        order_id: orderId,
+        callback_url: callbackUrl,
+        idempotency_key: idempotencyKey,
       });
 
     return invoice;
