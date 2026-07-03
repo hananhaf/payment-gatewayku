@@ -20,6 +20,9 @@ export function Checkout() {
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState("");
+  const [booting, setBooting] = useState(() =>
+    new URLSearchParams(window.location.search).has("invoice")
+  );
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Load merchants; preselect from ?merchant= or the first one.
@@ -31,6 +34,19 @@ export function Checkout() {
         setMerchantId(list.find((m) => m.id === fromUrl)?.id ?? list[0]?.id ?? "");
       })
       .catch((e) => setError((e as Error).message));
+  }, []);
+
+  // Turnkey POS mode: ?invoice=<id> loads a pre-created invoice and shows its QR.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("invoice");
+    if (!id) return;
+    getInvoice(id)
+      .then((inv) => {
+        setNow(Date.now());
+        setInvoice(inv);
+      })
+      .catch(() => setError("Invoice tidak ditemukan atau kedaluwarsa"))
+      .finally(() => setBooting(false));
   }, []);
 
   // Render QR whenever the (pending/expired) invoice's payload is shown.
@@ -96,6 +112,18 @@ export function Checkout() {
   }
 
   const merchantName = (id: string) => merchants.find((m) => m.id === id)?.name ?? id;
+
+  // ---------- Loading a pre-created invoice (?invoice=) ----------
+  if (booting && !invoice) {
+    return (
+      <main className="page">
+        <Wordmark />
+        <section className="card center">
+          <p className="empty">Memuat invoice…</p>
+        </section>
+      </main>
+    );
+  }
 
   // ---------- Paid ----------
   if (invoice?.status === "paid") {
