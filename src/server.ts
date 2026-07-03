@@ -1,9 +1,49 @@
 import { createHmac } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import net from "node:net";
 import express from "express";
 import cors from "cors";
 import type { InvoiceStore } from "./gateway/invoices.ts";
 import { parseAmount } from "./gateway/matcher.ts";
 import type { Invoice, Merchant } from "./gateway/types.ts";
+
+/** True if an IP is loopback / private / link-local / metadata / reserved (SSRF targets). */
+export function isBlockedIp(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    return (
+      a === 0 || a === 127 || a === 10 || a! >= 224 ||
+      (a === 172 && b! >= 16 && b! <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      (a === 100 && b! >= 64 && b! <= 127) // CGNAT
+    );
+  }
+  const v = ip.toLowerCase();
+  if (v.startsWith("::ffff:")) return isBlockedIp(v.slice(7)); // IPv4-mapped
+  return v === "::1" || v === "::" || v.startsWith("fe80") || v.startsWith("fc") || v.startsWith("fd");
+}
+
+/**
+ * SSRF guard for POS callback URLs: http(s) only, and the resolved host must not
+ * be a private/loopback/metadata address. Set CALLBACK_ALLOW_PRIVATE=1 in dev/tests.
+ */
+async function callbackAllowed(urlStr: string): Promise<boolean> {
+  let u: URL;
+  try {
+    u = new URL(urlStr);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  if (process.env.CALLBACK_ALLOW_PRIVATE === "1") return true;
+  try {
+    const addrs = await lookup(u.hostname, { all: true });
+    return addrs.length > 0 && addrs.every((a) => !isBlockedIp(a.address));
+  } catch {
+    return false;
+  }
+}
 
 /** Public shape of an invoice — never leaks the POS callback URL. */
 function publicView(inv: Invoice) {
@@ -22,6 +62,10 @@ function payUrl(req: express.Request, id: string): string {
 /** POST a signed "invoice.paid" callback to the POS, with a few retries. Fire-and-forget. */
 async function deliverCallback(inv: Invoice, secret: string, store: InvoiceStore): Promise<void> {
   if (!inv.callbackUrl) return;
+  if (!(await callbackAllowed(inv.callbackUrl))) {
+    console.error(`[callback] refused (SSRF guard / bad URL) for ${inv.id}: ${inv.callbackUrl}`);
+    return;
+  }
   const body = JSON.stringify({
     event: "invoice.paid",
     id: inv.id,
@@ -38,6 +82,7 @@ async function deliverCallback(inv: Invoice, secret: string, store: InvoiceStore
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Signature": signature },
         body,
+        redirect: "error", // don't let a 3xx bounce the callback to an internal host
         signal: AbortSignal.timeout(8000),
       });
       if (res.ok) {

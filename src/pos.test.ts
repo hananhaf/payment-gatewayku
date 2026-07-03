@@ -5,8 +5,11 @@ import { createHmac } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { openDb } from "./gateway/db.ts";
 import { InvoiceStore } from "./gateway/invoices.ts";
-import { createServer } from "./server.ts";
+import { createServer, isBlockedIp } from "./server.ts";
 import type { GatewayConfig, Merchant } from "./gateway/types.ts";
+
+// The callback test's receiver runs on 127.0.0.1; allow private targets in tests.
+process.env.CALLBACK_ALLOW_PRIVATE = "1";
 
 const QRIS = "0002010102112604TEST5204000053033605802ID5904Toko6004Kota6304B1D8";
 const MERCHANTS: Merchant[] = [
@@ -33,6 +36,15 @@ const J = (extra: Record<string, string> = {}) => ({
 });
 const posCreate = (base: string, key: string, body: object) =>
   fetch(`${base}/api/pos/invoices`, { method: "POST", ...J({ "X-API-Key": key }), body: JSON.stringify(body) });
+
+test("isBlockedIp blocks SSRF ranges, allows public IPs", () => {
+  for (const ip of ["127.0.0.1", "10.0.0.1", "172.16.5.5", "192.168.1.1", "169.254.169.254", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1"]) {
+    assert.equal(isBlockedIp(ip), true, `${ip} should be blocked`);
+  }
+  for (const ip of ["8.8.8.8", "1.1.1.1", "172.15.0.1", "192.167.0.1", "2606:4700:4700::1111"]) {
+    assert.equal(isBlockedIp(ip), false, `${ip} should be allowed`);
+  }
+});
 
 test("POS create requires a valid X-API-Key", async () => {
   await withServer(async (base) => {
