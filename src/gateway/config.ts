@@ -5,8 +5,8 @@ import type { GatewayConfig } from "./types.ts";
 function numEnv(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined || value.trim() === "") return fallback;
   const n = Number(value);
-  if (!Number.isFinite(n)) {
-    throw new Error(`${name} must be a number, got "${value}"`);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`${name} must be a positive integer, got "${value}"`);
   }
   return n;
 }

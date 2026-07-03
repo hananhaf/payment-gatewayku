@@ -56,3 +56,16 @@ test("throws on malformed MERCHANTS JSON", () => {
   const env = { MERCHANTS: "{not json" } as unknown as NodeJS.ProcessEnv;
   assert.throws(() => loadMerchants(env), /MERCHANTS/);
 });
+
+test("throws on duplicate apiKeys across merchants", () => {
+  const env = { MERCHANTS: JSON.stringify([
+    { id: "a", name: "A", qris: QRIS, apiKey: "SAME" },
+    { id: "b", name: "B", qris: QRIS, apiKey: "SAME" },
+  ]) } as unknown as NodeJS.ProcessEnv;
+  assert.throws(() => loadMerchants(env), /duplicate apiKey/i);
+});
+
+test("throws a clear error on a null array element (not a raw TypeError)", () => {
+  const env = { MERCHANTS: "[null]" } as unknown as NodeJS.ProcessEnv;
+  assert.throws(() => loadMerchants(env), /merchant #0 is not an object/);
+});

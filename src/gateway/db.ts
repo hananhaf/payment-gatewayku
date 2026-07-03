@@ -23,6 +23,7 @@ export function openDb(file = "gateway.db"): Database.Database {
     db.exec("ALTER TABLE invoices ADD COLUMN merchant_id TEXT NOT NULL DEFAULT 'default'");
   }
 
+  db.exec("DROP INDEX IF EXISTS idx_invoices_status_amount");
   db.exec(`CREATE INDEX IF NOT EXISTS idx_invoices_merchant_status_amount
              ON invoices(merchant_id, status, unique_amount)`);
   return db;

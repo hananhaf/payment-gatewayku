@@ -7,7 +7,11 @@ function validate(list: unknown, source: string): Merchant[] {
     throw new Error(`${source}: expected a non-empty array of merchants`);
   }
   const seen = new Set<string>();
+  const seenKeys = new Set<string>();
   return list.map((raw, i) => {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error(`${source}: merchant #${i} is not an object`);
+    }
     const m = raw as Record<string, unknown>;
     for (const field of ["id", "name", "qris", "apiKey"] as const) {
       if (typeof m[field] !== "string" || (m[field] as string).trim() === "") {
@@ -22,7 +26,10 @@ function validate(list: unknown, source: string): Merchant[] {
     if (!check.valid) {
       throw new Error(`${source}: merchant "${id}" has an invalid QRIS: ${check.errors.join("; ")}`);
     }
-    return { id, name: (m.name as string).trim(), qris, apiKey: (m.apiKey as string).trim() };
+    const apiKey = (m.apiKey as string).trim();
+    if (seenKeys.has(apiKey)) throw new Error(`${source}: duplicate apiKey for merchant "${id}"`);
+    seenKeys.add(apiKey);
+    return { id, name: (m.name as string).trim(), qris, apiKey };
   });
 }
 

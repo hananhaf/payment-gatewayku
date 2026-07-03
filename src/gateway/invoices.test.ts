@@ -52,17 +52,6 @@ test("settle matches the correct merchant's invoice", () => {
   assert.equal(s.get(a.id)?.status, "paid");
 });
 
-test("two merchants may hold the SAME unique amount without cross-settling", () => {
-  const s = store();
-  const a = s.create("a", 25000);
-  // Manually create b with the identical unique amount by retrying until equal is impractical;
-  // instead assert scoping: settle b with a.uniqueAmount settles at most b's own, never a's.
-  const before = s.get(a.id)?.status;
-  s.settle("b", a.uniqueAmount);
-  assert.equal(before, "pending");
-  assert.equal(s.get(a.id)?.status, "pending");
-});
-
 test("unique amount is unique among a merchant's own pending invoices", () => {
   const s = store();
   const x = s.create("a", 25000);

@@ -26,6 +26,17 @@ async function withServer(fn: (base: string, store: InvoiceStore) => Promise<voi
   }
 }
 
+const SINGLE: Merchant[] = [{ id: "default", name: "Default", qris: QRIS, apiKey: "key-d" }];
+async function withSingleServer(fn: (base: string) => Promise<void>) {
+  const cfg: GatewayConfig = { merchants: SINGLE, port: 0, invoiceTtlMs: 600000, maxOffset: 999, dbPath: ":memory:" };
+  const store = new InvoiceStore(openDb(":memory:"), cfg);
+  const app = createServer(store, SINGLE);
+  const server = app.listen(0);
+  await new Promise((r) => server.once("listening", r));
+  const { port } = server.address() as AddressInfo;
+  try { await fn(`http://127.0.0.1:${port}`); } finally { server.close(); }
+}
+
 const j = (extra: object = {}) => ({ headers: { "Content-Type": "application/json", ...(extra as any) } });
 
 test("GET /api/merchants lists id+name only (no qris/apiKey)", async () => {
@@ -90,5 +101,29 @@ test("webhook to unknown merchant returns 404", async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/webhook/zzz`, { method: "POST", ...j({ "X-API-Key": "x" }), body: JSON.stringify({ amountDetected: "1" }) });
     assert.equal(res.status, 404);
+  });
+});
+
+test("single-merchant: POST /api/invoices without merchantId uses the sole merchant", async () => {
+  await withSingleServer(async (base) => {
+    const res = await fetch(`${base}/api/invoices`, { method: "POST", ...j(), body: JSON.stringify({ amount: 25000 }) });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).merchantId, "default");
+  });
+});
+
+test("single-merchant: legacy POST /webhook settles the sole merchant", async () => {
+  await withSingleServer(async (base) => {
+    const inv = await (await fetch(`${base}/api/invoices`, { method: "POST", ...j(), body: JSON.stringify({ amount: 25000 }) })).json();
+    const res = await fetch(`${base}/webhook`, { method: "POST", ...j({ "X-API-Key": "key-d" }), body: JSON.stringify({ amountDetected: String(inv.uniqueAmount) }) });
+    assert.equal((await res.json()).matched, true);
+    assert.equal((await (await fetch(`${base}/api/invoices/${inv.id}`)).json()).status, "paid");
+  });
+});
+
+test("multi-merchant: legacy POST /webhook returns 400 (merchantId required)", async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/webhook`, { method: "POST", ...j({ "X-API-Key": "key-a" }), body: JSON.stringify({ amountDetected: "1" }) });
+    assert.equal(res.status, 400);
   });
 });

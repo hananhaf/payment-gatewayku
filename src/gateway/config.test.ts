@@ -31,6 +31,13 @@ test("throws when no merchants configured", () => {
 test("throws on non-numeric PORT", () => {
   assert.throws(
     () => loadConfig({ STATIC_QRIS: QRIS, API_KEY: "k", PORT: "abc" } as NodeJS.ProcessEnv),
-    /PORT must be a number/
+    /PORT must be a positive integer/
+  );
+});
+
+test("throws on a negative MAX_OFFSET", () => {
+  assert.throws(
+    () => loadConfig({ STATIC_QRIS: QRIS, API_KEY: "k", MAX_OFFSET: "-1" } as NodeJS.ProcessEnv),
+    /MAX_OFFSET must be a positive integer/
   );
 });

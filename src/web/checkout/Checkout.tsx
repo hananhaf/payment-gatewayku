@@ -33,14 +33,19 @@ export function Checkout() {
 
   useEffect(() => {
     if (!invoice || invoice.status !== "pending") return;
+    let cancelled = false;
     const timer = setInterval(async () => {
       try {
-        setInvoice(await getInvoice(invoice.id));
+        const updated = await getInvoice(invoice.id);
+        if (!cancelled) setInvoice(updated);
       } catch {
         /* keep polling */
       }
     }, 3000);
-    return () => clearInterval(timer);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [invoice?.id, invoice?.status]);
 
   async function handleCreate(e: React.FormEvent) {

@@ -2,10 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert";
 import Database from "better-sqlite3";
 import { openDb } from "./db.ts";
+import { InvoiceStore } from "./invoices.ts";
+import type { GatewayConfig } from "./types.ts";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { rmSync } from "node:fs";
+
+const QRIS = "0002010102112604TEST5204000053033605802ID5904Toko6004Kota6304B1D8";
 
 test("fresh DB has a merchant_id column on invoices", () => {
   const db = openDb(":memory:");
@@ -29,6 +33,34 @@ test("migrates an existing pre-multi-merchant table, defaulting old rows to 'def
     assert.ok(cols.includes("merchant_id"));
     const row = db.prepare("SELECT merchant_id FROM invoices WHERE id='old1'").get() as { merchant_id: string };
     assert.equal(row.merchant_id, "default");
+    db.close();
+  } finally {
+    rmSync(file, { force: true });
+    rmSync(`${file}-wal`, { force: true });
+    rmSync(`${file}-shm`, { force: true });
+  }
+});
+
+test("a migrated legacy row is settleable via the default merchant", () => {
+  const file = path.join(tmpdir(), `gw-${randomBytes(6).toString("hex")}.db`);
+  try {
+    const old = new Database(file);
+    old.exec(`CREATE TABLE invoices (
+      id TEXT PRIMARY KEY, base_amount INTEGER NOT NULL, unique_amount INTEGER NOT NULL,
+      qr_string TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, paid_at INTEGER)`);
+    old.prepare(`INSERT INTO invoices VALUES ('old1',1000,1001,'q','pending',1,9999999999999,NULL)`).run();
+    old.close();
+
+    const db = openDb(file);
+    const cfg: GatewayConfig = {
+      merchants: [{ id: "default", name: "D", qris: QRIS, apiKey: "k" }],
+      port: 0, invoiceTtlMs: 600000, maxOffset: 999, dbPath: file,
+    };
+    const store = new InvoiceStore(db, cfg, () => 2);
+    const settled = store.settle("default", 1001);
+    assert.equal(settled?.id, "old1");
+    assert.equal(store.get("old1")?.status, "paid");
     db.close();
   } finally {
     rmSync(file, { force: true });
