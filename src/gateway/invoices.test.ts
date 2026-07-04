@@ -6,7 +6,11 @@ import type { GatewayConfig, Merchant } from "./types.ts";
 
 let pool: Awaited<ReturnType<typeof openTestDb>>;
 before(async () => { pool = await openTestDb(); });
-beforeEach(async () => { await pool.query("TRUNCATE TABLE invoices"); });
+beforeEach(async () => {
+  await pool.query("TRUNCATE TABLE notifications");
+  await pool.query("TRUNCATE TABLE invoices");
+  await pool.query("TRUNCATE TABLE merchants");
+});
 after(async () => { await pool.end(); });
 
 const QRIS = "0002010102112604TEST5204000053033605802ID5904Toko6004Kota6304B1D8";

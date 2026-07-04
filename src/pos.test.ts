@@ -1,4 +1,4 @@
-import { test, before, beforeEach, after } from "node:test";
+import { test, before, after, type TestContext } from "node:test";
 import assert from "node:assert";
 import http from "node:http";
 import { createHmac } from "node:crypto";
@@ -13,7 +13,22 @@ process.env.CALLBACK_ALLOW_PRIVATE = "1";
 
 let pool: Awaited<ReturnType<typeof openTestDb>>;
 before(async () => { pool = await openTestDb(); });
-beforeEach(async () => { await pool.query("TRUNCATE TABLE invoices"); });
+async function cleanup() {
+  await pool.query("TRUNCATE TABLE notifications");
+  await pool.query("TRUNCATE TABLE invoices");
+  await pool.query("TRUNCATE TABLE merchants");
+}
+let chain = Promise.resolve();
+function serial(name: string, fn: (t: TestContext) => Promise<void>): void {
+  test(name, async (t) => {
+    const run = chain.then(async () => {
+      await cleanup();
+      await fn(t);
+    });
+    chain = run.catch(() => undefined);
+    await run;
+  });
+}
 after(async () => { await pool.end(); });
 
 const QRIS = "0002010102112604TEST5204000053033605802ID5904Toko6004Kota6304B1D8";
@@ -32,7 +47,7 @@ async function withServer(fn: (base: string, store: InvoiceStore) => Promise<voi
   try {
     await fn(`http://127.0.0.1:${port}`, store);
   } finally {
-    server.close();
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 }
 
@@ -42,7 +57,7 @@ const J = (extra: Record<string, string> = {}) => ({
 const posCreate = (base: string, key: string, body: object) =>
   fetch(`${base}/api/pos/invoices`, { method: "POST", ...J({ "X-API-Key": key }), body: JSON.stringify(body) });
 
-test("isBlockedIp blocks SSRF ranges, allows public IPs", () => {
+serial("isBlockedIp blocks SSRF ranges, allows public IPs", async () => {
   for (const ip of ["127.0.0.1", "10.0.0.1", "172.16.5.5", "192.168.1.1", "169.254.169.254", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1"]) {
     assert.equal(isBlockedIp(ip), true, `${ip} should be blocked`);
   }
@@ -51,14 +66,14 @@ test("isBlockedIp blocks SSRF ranges, allows public IPs", () => {
   }
 });
 
-test("POS create requires a valid X-API-Key", async () => {
+serial("POS create requires a valid X-API-Key", async () => {
   await withServer(async (base) => {
     assert.equal((await fetch(`${base}/api/pos/invoices`, { method: "POST", ...J(), body: JSON.stringify({ amount: 10000 }) })).status, 401);
     assert.equal((await posCreate(base, "wrong", { amount: 10000 })).status, 401);
   });
 });
 
-test("POS create returns the merchant's invoice with orderId + payUrl, no callbackUrl", async () => {
+serial("POS create returns the merchant's invoice with orderId + payUrl, no callbackUrl", async () => {
   await withServer(async (base) => {
     const res = await posCreate(base, "key-a", { amount: 25000, orderId: "ORD-1", callbackUrl: "https://shop.example/cb" });
     assert.equal(res.status, 200);
@@ -71,14 +86,14 @@ test("POS create returns the merchant's invoice with orderId + payUrl, no callba
   });
 });
 
-test("POS create rejects a bad amount and a non-http callbackUrl", async () => {
+serial("POS create rejects a bad amount and a non-http callbackUrl", async () => {
   await withServer(async (base) => {
     assert.equal((await posCreate(base, "key-a", { amount: 0 })).status, 400);
     assert.equal((await posCreate(base, "key-a", { amount: 1000, callbackUrl: "ftp://x" })).status, 400);
   });
 });
 
-test("POS create is idempotent by idempotencyKey", async () => {
+serial("POS create is idempotent by idempotencyKey", async () => {
   await withServer(async (base) => {
     const a = await (await posCreate(base, "key-a", { amount: 25000, idempotencyKey: "abc" })).json();
     const b = await (await posCreate(base, "key-a", { amount: 25000, idempotencyKey: "abc" })).json();
@@ -86,7 +101,7 @@ test("POS create is idempotent by idempotencyKey", async () => {
   });
 });
 
-test("POS read is scoped to the authed merchant", async () => {
+serial("POS read is scoped to the authed merchant", async () => {
   await withServer(async (base) => {
     const inv = await (await posCreate(base, "key-a", { amount: 25000 })).json();
     assert.equal((await fetch(`${base}/api/pos/invoices/${inv.id}`, { headers: { "X-API-Key": "key-a" } })).status, 200);
@@ -94,7 +109,7 @@ test("POS read is scoped to the authed merchant", async () => {
   });
 });
 
-test("public GET does not leak callbackUrl", async () => {
+serial("public GET does not leak callbackUrl", async () => {
   await withServer(async (base) => {
     const inv = await (await posCreate(base, "key-a", { amount: 25000, callbackUrl: "https://shop.example/cb" })).json();
     const pub = await (await fetch(`${base}/api/invoices/${inv.id}`)).json();
@@ -102,7 +117,7 @@ test("public GET does not leak callbackUrl", async () => {
   });
 });
 
-test("a paid invoice fires a signed HMAC callback to the POS", async () => {
+serial("a paid invoice fires a signed HMAC callback to the POS", async () => {
   const received: { headers: http.IncomingHttpHeaders; body: string }[] = [];
   let resolveGot: () => void;
   const gotOne = new Promise<void>((r) => (resolveGot = r));
@@ -148,6 +163,6 @@ test("a paid invoice fires a signed HMAC callback to the POS", async () => {
       assert.equal(payload.amount, inv.uniqueAmount);
     });
   } finally {
-    recv.close();
+    await new Promise<void>((resolve, reject) => recv.close((err) => (err ? reject(err) : resolve())));
   }
 });

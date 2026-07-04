@@ -2,7 +2,14 @@ import { randomBytes, randomInt } from "node:crypto";
 import type { Pool, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { convertQRIS } from "../core/index.ts";
 import { selectMatch } from "./matcher.ts";
-import type { CreateInvoiceOptions, GatewayConfig, Invoice, InvoiceStatus, Merchant } from "./types.ts";
+import type {
+  CreateInvoiceOptions,
+  GatewayConfig,
+  Invoice,
+  InvoiceStatus,
+  Merchant,
+  NotificationAuditInput,
+} from "./types.ts";
 
 interface Row extends RowDataPacket {
   id: string;
@@ -13,9 +20,27 @@ interface Row extends RowDataPacket {
   status: string;
   order_id: string | null;
   callback_url: string | null;
-  created_at: number;
-  expires_at: number;
-  paid_at: number | null;
+  created_at: Date;
+  expires_at: Date;
+  paid_at: Date | null;
+}
+
+interface MerchantRow extends RowDataPacket {
+  id: string;
+  name: string;
+  qris: string;
+  api_key: string;
+  active: 0 | 1;
+}
+
+function toDate(ms: number): Date {
+  return new Date(ms);
+}
+
+function toMillis(value: Date | string | number): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  return new Date(`${value.replace(" ", "T")}Z`).getTime();
 }
 
 function rowToInvoice(row: Row): Invoice {
@@ -26,12 +51,16 @@ function rowToInvoice(row: Row): Invoice {
     uniqueAmount: Number(row.unique_amount),
     qrString: row.qr_string,
     status: row.status as InvoiceStatus,
-    createdAt: Number(row.created_at),
-    expiresAt: Number(row.expires_at),
-    paidAt: row.paid_at == null ? null : Number(row.paid_at),
+    createdAt: toMillis(row.created_at),
+    expiresAt: toMillis(row.expires_at),
+    paidAt: row.paid_at == null ? null : toMillis(row.paid_at),
     orderId: row.order_id ?? null,
     callbackUrl: row.callback_url ?? null,
   };
+}
+
+function rowToMerchant(row: MerchantRow): Merchant {
+  return { id: row.id, name: row.name, qris: row.qris, apiKey: row.api_key, active: Boolean(row.active) };
 }
 
 /** MySQL-backed invoice store. All methods are async. */
@@ -42,8 +71,40 @@ export class InvoiceStore {
     private now: () => number = () => Date.now()
   ) {}
 
-  private merchant(id: string): Merchant {
-    const m = this.config.merchants.find((x) => x.id === id);
+  async listMerchants(): Promise<Merchant[]> {
+    if (this.config.merchants.length > 0) {
+      return this.config.merchants.filter((m) => m.active !== false);
+    }
+    const [rows] = await this.pool.query<MerchantRow[]>(
+      `SELECT id, name, qris, api_key, active FROM merchants WHERE active=1 ORDER BY id`
+    );
+    return rows.map(rowToMerchant);
+  }
+
+  async getMerchantById(id: string): Promise<Merchant | null> {
+    if (this.config.merchants.length > 0) {
+      return this.config.merchants.find((m) => m.id === id && m.active !== false) ?? null;
+    }
+    const [rows] = await this.pool.query<MerchantRow[]>(
+      `SELECT id, name, qris, api_key, active FROM merchants WHERE id=? AND active=1 LIMIT 1`,
+      [id]
+    );
+    return rows[0] ? rowToMerchant(rows[0]) : null;
+  }
+
+  async getMerchantByApiKey(apiKey: string): Promise<Merchant | null> {
+    if (this.config.merchants.length > 0) {
+      return this.config.merchants.find((m) => m.apiKey === apiKey && m.active !== false) ?? null;
+    }
+    const [rows] = await this.pool.query<MerchantRow[]>(
+      `SELECT id, name, qris, api_key, active FROM merchants WHERE api_key=? AND active=1 LIMIT 1`,
+      [apiKey]
+    );
+    return rows[0] ? rowToMerchant(rows[0]) : null;
+  }
+
+  private async merchant(id: string): Promise<Merchant> {
+    const m = await this.getMerchantById(id);
     if (!m) throw new Error(`unknown merchant: ${id}`);
     return m;
   }
@@ -51,7 +112,7 @@ export class InvoiceStore {
   async expireStale(): Promise<void> {
     await this.pool.query(
       `UPDATE invoices SET status='expired' WHERE status='pending' AND expires_at < ?`,
-      [this.now()]
+      [toDate(this.now())]
     );
   }
 
@@ -76,7 +137,7 @@ export class InvoiceStore {
   }
 
   async create(merchantId: string, baseAmount: number, opts: CreateInvoiceOptions = {}): Promise<Invoice> {
-    const merchant = this.merchant(merchantId);
+    const merchant = await this.merchant(merchantId);
     if (!Number.isInteger(baseAmount) || baseAmount <= 0) {
       throw new Error("baseAmount must be a positive integer (rupiah)");
     }
@@ -123,7 +184,7 @@ export class InvoiceStore {
           order_id, callback_url, idempotency_key, callback_sent)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`,
       [invoice.id, merchantId, baseAmount, uniqueAmount, invoice.qrString, "pending",
-       now, invoice.expiresAt, null, orderId, callbackUrl, idempotencyKey]
+       toDate(now), toDate(invoice.expiresAt), null, orderId, callbackUrl, idempotencyKey]
     );
 
     return invoice;
@@ -174,8 +235,8 @@ export class InvoiceStore {
     await this.expireStale();
     const midnight = new Date(this.now());
     midnight.setHours(0, 0, 0, 0);
-    const t0 = midnight.getTime();
-    const one = async (sql: string, ...p: (string | number)[]): Promise<number> => {
+    const t0 = toDate(midnight.getTime());
+    const one = async (sql: string, ...p: (string | number | Date)[]): Promise<number> => {
       const [rows] = await this.pool.query<(RowDataPacket & { v: number })[]>(sql, p);
       return Number(rows[0]?.v ?? 0);
     };
@@ -198,9 +259,28 @@ export class InvoiceStore {
     // Guarded UPDATE: only the winner of a concurrent settle flips pending->paid.
     const [result] = await this.pool.query<ResultSetHeader>(
       `UPDATE invoices SET status='paid', paid_at=? WHERE id=? AND status='pending'`,
-      [paidAt, match.id]
+      [toDate(paidAt), match.id]
     );
     if (result.affectedRows === 0) return null;
     return { ...match, status: "paid", paidAt };
+  }
+
+  async logNotification(input: NotificationAuditInput): Promise<void> {
+    const rawPayload = JSON.stringify(input.rawPayload ?? null);
+    await this.pool.query(
+      `INSERT INTO notifications
+         (merchant_id, amount, matched, matched_invoice_id, package_name, raw_text, raw_payload, received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.merchantId,
+        input.amount,
+        input.matchedInvoiceId ? 1 : 0,
+        input.matchedInvoiceId,
+        input.packageName ?? null,
+        input.rawText ?? null,
+        rawPayload,
+        toDate(this.now()),
+      ]
+    );
   }
 }

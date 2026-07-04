@@ -1,8 +1,9 @@
 import path from "node:path";
 import express from "express";
-import { loadConfig } from "./gateway/config.ts";
+import { loadConfigWithMerchants } from "./gateway/config.ts";
 import { openDb, loadDbConfig } from "./gateway/db.ts";
 import { InvoiceStore } from "./gateway/invoices.ts";
+import { loadActiveMerchantsFromDb, seedMerchantsFromEnvIfEmpty } from "./gateway/merchants.ts";
 import { createServer } from "./server.ts";
 import type { GatewayConfig } from "./gateway/types.ts";
 
@@ -13,10 +14,12 @@ import type { GatewayConfig } from "./gateway/types.ts";
  * pre-bound HTTP server so the port binds before this heavier init runs).
  */
 export async function buildApp(): Promise<{ app: express.Express; config: GatewayConfig }> {
-  const config = loadConfig();
   const pool = await openDb(loadDbConfig());
+  await seedMerchantsFromEnvIfEmpty(pool);
+  await loadActiveMerchantsFromDb(pool);
+  const config = loadConfigWithMerchants([]);
   const store = new InvoiceStore(pool, config);
-  const app = createServer(store, config.merchants);
+  const app = createServer(store);
 
   const dist = path.resolve("dist");
   app.use(express.static(dist));

@@ -91,8 +91,11 @@ function baseUrl(req: express.Request): string {
 
 const VALID_STATUS: InvoiceStatus[] = ["pending", "paid", "expired"];
 
-export function registerAdminRoutes(app: express.Express, store: InvoiceStore, merchants: Merchant[]): void {
-  const byId = new Map(merchants.map((m) => [m.id, m]));
+export function registerAdminRoutes(app: express.Express, store: InvoiceStore, merchants: Merchant[] = []): void {
+  const fallbackById = new Map(merchants.map((m) => [m.id, m]));
+  const listMerchants = async () => (store.listMerchants ? store.listMerchants() : merchants);
+  const merchantById = async (id: string) =>
+    (store.getMerchantById ? await store.getMerchantById(id) : fallbackById.get(id)) ?? null;
 
   // Brute-force throttle. Keyed on the TRUE peer (socket.remoteAddress), NEVER on the
   // spoofable X-Forwarded-For — else an attacker rotates that header for a fresh bucket
@@ -170,7 +173,7 @@ export function registerAdminRoutes(app: express.Express, store: InvoiceStore, m
       return;
     }
     const merchantId = typeof req.query.merchantId === "string" ? req.query.merchantId : undefined;
-    if (merchantId && !byId.has(merchantId)) {
+    if (merchantId && !(await merchantById(merchantId))) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });
       return;
     }
@@ -181,10 +184,10 @@ export function registerAdminRoutes(app: express.Express, store: InvoiceStore, m
 
   // Integration reference per merchant — the wiring an operator needs, with secrets,
   // behind auth. This is the reason /api/admin/* must never be exposed unauthenticated.
-  app.get("/api/admin/merchants", requireAdmin, (req, res) => {
+  app.get("/api/admin/merchants", requireAdmin, async (req, res) => {
     const base = baseUrl(req);
     res.json(
-      merchants.map((m) => ({
+      (await listMerchants()).map((m) => ({
         id: m.id,
         name: m.name,
         apiKey: m.apiKey,

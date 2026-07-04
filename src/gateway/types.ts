@@ -5,6 +5,7 @@ export interface Merchant {
   name: string;
   qris: string;
   apiKey: string;
+  active?: boolean;
 }
 
 export interface Invoice {
@@ -28,6 +29,15 @@ export interface CreateInvoiceOptions {
   orderId?: string;
   callbackUrl?: string;
   idempotencyKey?: string;
+}
+
+export interface NotificationAuditInput {
+  merchantId: string;
+  amount: number | null;
+  matchedInvoiceId: string | null;
+  packageName?: string | null;
+  rawText?: string | null;
+  rawPayload: unknown;
 }
 
 export interface GatewayConfig {

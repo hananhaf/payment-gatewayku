@@ -98,17 +98,38 @@ async function deliverCallback(inv: Invoice, secret: string, store: InvoiceStore
   console.error(`[callback] failed to deliver invoice.paid for ${inv.id} after 3 attempts`);
 }
 
-export function createServer(store: InvoiceStore, merchants: Merchant[]) {
-  const byId = new Map(merchants.map((m) => [m.id, m]));
-  const byKey = new Map(merchants.map((m) => [m.apiKey, m]));
+function notificationPackageName(body: unknown): string | null {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+  const value = (body as Record<string, unknown>).packageName;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function notificationText(body: unknown): string | null {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+  const src = body as Record<string, unknown>;
+  for (const key of ["text", "message", "title", "content"] as const) {
+    const value = src[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+export function createServer(store: InvoiceStore, merchants: Merchant[] = []) {
+  const fallbackById = new Map(merchants.map((m) => [m.id, m]));
+  const fallbackByKey = new Map(merchants.map((m) => [m.apiKey, m]));
+  const listMerchants = async () => (store.listMerchants ? store.listMerchants() : merchants);
+  const merchantById = async (id: string) =>
+    (store.getMerchantById ? await store.getMerchantById(id) : fallbackById.get(id)) ?? null;
+  const merchantByKey = async (apiKey: string) =>
+    (store.getMerchantByApiKey ? await store.getMerchantByApiKey(apiKey) : fallbackByKey.get(apiKey)) ?? null;
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: "1mb" }));
 
   /** Resolve the merchant authenticated by the X-API-Key header (POS API). */
-  const posMerchant = (req: express.Request): Merchant | null => {
+  const posMerchant = async (req: express.Request): Promise<Merchant | null> => {
     const key = req.headers["x-api-key"];
-    return (typeof key === "string" && byKey.get(key)) || null;
+    return typeof key === "string" ? merchantByKey(key) : null;
   };
 
   app.get("/health", (_req, res) => {
@@ -116,23 +137,24 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   });
 
   // Public: merchant directory for the checkout page (id + name only)
-  app.get("/api/merchants", (_req, res) => {
-    res.json(merchants.map((m) => ({ id: m.id, name: m.name })));
+  app.get("/api/merchants", async (_req, res) => {
+    res.json((await listMerchants()).map((m) => ({ id: m.id, name: m.name })));
   });
 
   // Public: create an invoice (self-service checkout page).
   app.post("/api/invoices", async (req, res) => {
+    const activeMerchants = await listMerchants();
     const merchantId =
       typeof req.body?.merchantId === "string" && req.body.merchantId.trim()
         ? req.body.merchantId.trim()
-        : merchants.length === 1
-          ? merchants[0]!.id
+        : activeMerchants.length === 1
+          ? activeMerchants[0]!.id
           : undefined;
     if (!merchantId) {
       res.status(400).json({ error: "merchantId is required" });
       return;
     }
-    if (!byId.has(merchantId)) {
+    if (!(await merchantById(merchantId))) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });
       return;
     }
@@ -152,7 +174,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
 
   // Create an invoice for the authenticated merchant, with optional orderId / callbackUrl / idempotencyKey.
   app.post("/api/pos/invoices", async (req, res) => {
-    const merchant = posMerchant(req);
+    const merchant = await posMerchant(req);
     if (!merchant) {
       res.status(401).json({ error: "invalid or missing X-API-Key" });
       return;
@@ -181,7 +203,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
 
   // Read one of the authenticated merchant's invoices.
   app.get("/api/pos/invoices/:id", async (req, res) => {
-    const merchant = posMerchant(req);
+    const merchant = await posMerchant(req);
     if (!merchant) {
       res.status(401).json({ error: "invalid or missing X-API-Key" });
       return;
@@ -202,7 +224,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   // per-invoice endpoints below, which stay public.
   app.get("/api/history", requireAdmin, async (req, res) => {
     const merchantId = typeof req.query.merchantId === "string" ? req.query.merchantId : undefined;
-    if (merchantId && !byId.has(merchantId)) {
+    if (merchantId && !(await merchantById(merchantId))) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });
       return;
     }
@@ -221,7 +243,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
 
   // Protected: per-merchant notification webhook (from the NotificationListener device).
   const handleWebhook = async (merchantId: string, req: express.Request, res: express.Response) => {
-    const merchant = byId.get(merchantId);
+    const merchant = await merchantById(merchantId);
     if (!merchant) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });
       return;
@@ -232,10 +254,26 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
     }
     const amount = parseAmount(req.body ?? {});
     if (amount === null) {
+      await store.logNotification({
+        merchantId,
+        amount: null,
+        matchedInvoiceId: null,
+        packageName: notificationPackageName(req.body),
+        rawText: notificationText(req.body),
+        rawPayload: req.body ?? {},
+      });
       res.json({ matched: false, reason: "no amount detected" });
       return;
     }
     const inv = await store.settle(merchantId, amount);
+    await store.logNotification({
+      merchantId,
+      amount,
+      matchedInvoiceId: inv?.id ?? null,
+      packageName: notificationPackageName(req.body),
+      rawText: notificationText(req.body),
+      rawPayload: req.body ?? {},
+    });
     // Notify the POS if this invoice registered a callback. Fire-and-forget.
     if (inv?.callbackUrl) void deliverCallback(inv, merchant.apiKey, store);
     res.json({ matched: Boolean(inv), invoiceId: inv?.id ?? null });
@@ -244,12 +282,13 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   app.post("/webhook/:merchantId", (req, res) => handleWebhook(req.params.merchantId, req, res));
 
   // Legacy single-merchant webhook: only valid when exactly one merchant exists.
-  app.post("/webhook", (req, res) => {
-    if (merchants.length !== 1) {
+  app.post("/webhook", async (req, res) => {
+    const activeMerchants = await listMerchants();
+    if (activeMerchants.length !== 1) {
       res.status(400).json({ error: "merchantId required: use /webhook/:merchantId" });
       return;
     }
-    handleWebhook(merchants[0]!.id, req, res);
+    handleWebhook(activeMerchants[0]!.id, req, res);
   });
 
   return app;
