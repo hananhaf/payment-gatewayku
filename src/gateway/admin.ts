@@ -158,12 +158,12 @@ export function registerAdminRoutes(app: express.Express, store: InvoiceStore, m
     res.json({ enabled: adminEnabled(), authed: adminEnabled() && isAuthed(req) });
   });
 
-  app.get("/api/admin/stats", requireAdmin, (_req, res) => {
-    res.json(store.stats());
+  app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
+    res.json(await store.stats());
   });
 
   // All invoices across merchants (pending/paid/expired), newest first, filterable.
-  app.get("/api/admin/invoices", requireAdmin, (req, res) => {
+  app.get("/api/admin/invoices", requireAdmin, async (req, res) => {
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
     if (status && !VALID_STATUS.includes(status as InvoiceStatus)) {
       res.status(400).json({ error: `invalid status: ${status}` });
@@ -175,7 +175,7 @@ export function registerAdminRoutes(app: express.Express, store: InvoiceStore, m
       return;
     }
     res.json(
-      store.listAll({ status: status as InvoiceStatus | undefined, merchantId }) as Invoice[]
+      (await store.listAll({ status: status as InvoiceStatus | undefined, merchantId })) as Invoice[]
     );
   });
 

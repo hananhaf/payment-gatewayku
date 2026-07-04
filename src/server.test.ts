@@ -1,10 +1,15 @@
-import { test } from "node:test";
+import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert";
 import type { AddressInfo } from "node:net";
-import { openDb } from "./gateway/db.ts";
+import { openTestDb } from "./gateway/test-support.ts";
 import { InvoiceStore } from "./gateway/invoices.ts";
 import { createServer } from "./server.ts";
 import type { GatewayConfig, Merchant } from "./gateway/types.ts";
+
+let pool: Awaited<ReturnType<typeof openTestDb>>;
+before(async () => { pool = await openTestDb(); });
+beforeEach(async () => { await pool.query("TRUNCATE TABLE invoices"); });
+after(async () => { await pool.end(); });
 
 const QRIS = "0002010102112604TEST5204000053033605802ID5904Toko6004Kota6304B1D8";
 const MERCHANTS: Merchant[] = [
@@ -14,7 +19,7 @@ const MERCHANTS: Merchant[] = [
 
 async function withServer(fn: (base: string, store: InvoiceStore) => Promise<void>) {
   const cfg: GatewayConfig = { merchants: MERCHANTS, port: 0, invoiceTtlMs: 600000, maxOffset: 999, dbPath: ":memory:" };
-  const store = new InvoiceStore(openDb(":memory:"), cfg);
+  const store = new InvoiceStore(pool, cfg);
   const app = createServer(store, MERCHANTS);
   const server = app.listen(0);
   await new Promise((r) => server.once("listening", r));
@@ -29,7 +34,7 @@ async function withServer(fn: (base: string, store: InvoiceStore) => Promise<voi
 const SINGLE: Merchant[] = [{ id: "default", name: "Default", qris: QRIS, apiKey: "key-d" }];
 async function withSingleServer(fn: (base: string) => Promise<void>) {
   const cfg: GatewayConfig = { merchants: SINGLE, port: 0, invoiceTtlMs: 600000, maxOffset: 999, dbPath: ":memory:" };
-  const store = new InvoiceStore(openDb(":memory:"), cfg);
+  const store = new InvoiceStore(pool, cfg);
   const app = createServer(store, SINGLE);
   const server = app.listen(0);
   await new Promise((r) => server.once("listening", r));

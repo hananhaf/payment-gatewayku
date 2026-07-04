@@ -121,7 +121,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   });
 
   // Public: create an invoice (self-service checkout page).
-  app.post("/api/invoices", (req, res) => {
+  app.post("/api/invoices", async (req, res) => {
     const merchantId =
       typeof req.body?.merchantId === "string" && req.body.merchantId.trim()
         ? req.body.merchantId.trim()
@@ -142,7 +142,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
       return;
     }
     try {
-      res.json(publicView(store.create(merchantId, amount)));
+      res.json(publicView(await store.create(merchantId, amount)));
     } catch (e) {
       res.status(503).json({ error: (e as Error).message });
     }
@@ -151,7 +151,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   // ---------- POS / Merchant API (authenticated by X-API-Key = merchant apiKey) ----------
 
   // Create an invoice for the authenticated merchant, with optional orderId / callbackUrl / idempotencyKey.
-  app.post("/api/pos/invoices", (req, res) => {
+  app.post("/api/pos/invoices", async (req, res) => {
     const merchant = posMerchant(req);
     if (!merchant) {
       res.status(401).json({ error: "invalid or missing X-API-Key" });
@@ -168,7 +168,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
       return;
     }
     try {
-      const inv = store.create(merchant.id, amount, {
+      const inv = await store.create(merchant.id, amount, {
         orderId: typeof req.body?.orderId === "string" ? req.body.orderId : undefined,
         callbackUrl,
         idempotencyKey: typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey : undefined,
@@ -180,13 +180,13 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   });
 
   // Read one of the authenticated merchant's invoices.
-  app.get("/api/pos/invoices/:id", (req, res) => {
+  app.get("/api/pos/invoices/:id", async (req, res) => {
     const merchant = posMerchant(req);
     if (!merchant) {
       res.status(401).json({ error: "invalid or missing X-API-Key" });
       return;
     }
-    const inv = store.get(req.params.id);
+    const inv = await store.get(req.params.id);
     if (!inv || inv.merchantId !== merchant.id) {
       res.status(404).json({ error: "not found" });
       return;
@@ -200,18 +200,18 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
 
   // Paid transaction history (reveals revenue) — admin-only. POS/checkout use the
   // per-invoice endpoints below, which stay public.
-  app.get("/api/history", requireAdmin, (req, res) => {
+  app.get("/api/history", requireAdmin, async (req, res) => {
     const merchantId = typeof req.query.merchantId === "string" ? req.query.merchantId : undefined;
     if (merchantId && !byId.has(merchantId)) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });
       return;
     }
-    res.json(store.listPaid(merchantId).map(publicView));
+    res.json((await store.listPaid(merchantId)).map(publicView));
   });
 
   // Public: poll invoice status
-  app.get("/api/invoices/:id", (req, res) => {
-    const inv = store.get(req.params.id);
+  app.get("/api/invoices/:id", async (req, res) => {
+    const inv = await store.get(req.params.id);
     if (!inv) {
       res.status(404).json({ error: "not found" });
       return;
@@ -220,7 +220,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
   });
 
   // Protected: per-merchant notification webhook (from the NotificationListener device).
-  const handleWebhook = (merchantId: string, req: express.Request, res: express.Response) => {
+  const handleWebhook = async (merchantId: string, req: express.Request, res: express.Response) => {
     const merchant = byId.get(merchantId);
     if (!merchant) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });
@@ -235,7 +235,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
       res.json({ matched: false, reason: "no amount detected" });
       return;
     }
-    const inv = store.settle(merchantId, amount);
+    const inv = await store.settle(merchantId, amount);
     // Notify the POS if this invoice registered a callback. Fire-and-forget.
     if (inv?.callbackUrl) void deliverCallback(inv, merchant.apiKey, store);
     res.json({ matched: Boolean(inv), invoiceId: inv?.id ?? null });

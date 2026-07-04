@@ -26,8 +26,8 @@ httpServer.on("error", (e) => console.error("[server.js] http server error:", e)
 httpServer.listen(port, () => console.log(`[server.js] listening on ${port} — initializing app...`));
 
 import("./dist-server/app-factory.js")
-  .then(({ buildApp }) => {
-    const { app } = buildApp();
+  .then(async ({ buildApp }) => {
+    const { app } = await buildApp(); // connects to MySQL + ensures schema
     handler = app; // an Express app is itself a (req, res) handler
     console.log("[server.js] app initialized — serving real routes");
   })

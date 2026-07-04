@@ -1,6 +1,6 @@
 import { buildApp } from "./app-factory.ts";
 
-const { app, config } = buildApp();
+const { app, config } = await buildApp();
 
 app.listen(config.port, () => {
   console.log(`QRIS gateway listening on :${config.port}`);
