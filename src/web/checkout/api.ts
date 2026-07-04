@@ -30,6 +30,11 @@ export async function getInvoice(id: string): Promise<Invoice> {
 export async function getHistory(merchantId?: string): Promise<Invoice[]> {
   const qs = merchantId ? `?merchantId=${encodeURIComponent(merchantId)}` : "";
   const res = await fetch(`/api/history${qs}`);
+  // /api/history is now admin-only; bounce anonymous viewers to the admin console.
+  if (res.status === 401) {
+    window.location.href = "/admin.html";
+    throw new Error("Perlu login admin");
+  }
   if (!res.ok) throw new Error("Gagal memuat riwayat");
   return res.json();
 }

@@ -12,6 +12,8 @@ matches the amount to the pending invoice and marks it paid.
 |-----|----------|---------|
 | `STATIC_QRIS` | yes | Your merchant static QRIS payload (tag 00..63) |
 | `API_KEY` | yes | Shared secret; must equal the app's API Key |
+| `ADMIN_PASSWORD` | no | Enables the `/admin` console when set; unset = console disabled |
+| `ADMIN_SESSION_SECRET` | no | Session-cookie signing key; defaults to `ADMIN_PASSWORD` |
 | `PORT` | no | Default 3000 |
 | `INVOICE_TTL_MS` | no | Pending invoice lifetime, default 600000 (10 min) |
 | `MAX_OFFSET` | no | Max rupiah added for uniqueness, default 999 |
@@ -55,6 +57,22 @@ Caddy provisions TLS automatically.
 
 ## Health check
 `curl https://<your-host>/health` → `{"status":"OK"}`
+
+## Admin console (`/admin`)
+A login-gated page to monitor transactions and read each merchant's integration
+details (webhook URL, `X-API-Key`, checkout link, POS endpoint + sample cURL).
+
+- Enable it by setting `ADMIN_PASSWORD` (unset = the console and all
+  `/api/admin/*` routes stay disabled with `503`).
+- Log in at `https://<your-host>/admin`. The session is a 12h HttpOnly,
+  HMAC-signed cookie — no user table, no extra dependency.
+- **Only behavior change to existing routes:** `GET /api/history` (which reveals
+  revenue) now requires an admin session, and the public `history.html` bounces
+  anonymous viewers to `/admin`. `POST /api/invoices`, `GET /api/invoices/:id`,
+  and the POS/webhook routes stay unchanged, so checkout and POS keep working
+  without login.
+- The console is **read-only** (monitoring + reference); it does not create,
+  settle, or edit invoices or merchants.
 
 ## Multi-merchant
 

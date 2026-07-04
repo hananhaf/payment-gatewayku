@@ -16,6 +16,7 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         checkout: resolve(__dirname, "checkout.html"),
         history: resolve(__dirname, "history.html"),
+        admin: resolve(__dirname, "admin.html"),
       },
     },
   },

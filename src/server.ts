@@ -5,6 +5,7 @@ import express from "express";
 import cors from "cors";
 import type { InvoiceStore } from "./gateway/invoices.ts";
 import { parseAmount } from "./gateway/matcher.ts";
+import { registerAdminRoutes, requireAdmin } from "./gateway/admin.ts";
 import type { Invoice, Merchant } from "./gateway/types.ts";
 
 /** True if an IP is loopback / private / link-local / metadata / reserved (SSRF targets). */
@@ -193,8 +194,13 @@ export function createServer(store: InvoiceStore, merchants: Merchant[]) {
     res.json(publicView(inv));
   });
 
-  // Public: paid transaction history, optionally scoped to ?merchantId=
-  app.get("/api/history", (req, res) => {
+  // Admin console (login + monitoring + integration reference). No-op routes stay
+  // registered even when ADMIN_PASSWORD is unset; they answer 503 via requireAdmin.
+  registerAdminRoutes(app, store, merchants);
+
+  // Paid transaction history (reveals revenue) — admin-only. POS/checkout use the
+  // per-invoice endpoints below, which stay public.
+  app.get("/api/history", requireAdmin, (req, res) => {
     const merchantId = typeof req.query.merchantId === "string" ? req.query.merchantId : undefined;
     if (merchantId && !byId.has(merchantId)) {
       res.status(404).json({ error: `unknown merchant: ${merchantId}` });

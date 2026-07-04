@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (t !== "dark" && t !== "light") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <title>Admin — QRIS Payment</title>
+    <style>
+      :root {
+        --bg: #f1f5f9; --card: #ffffff; --fg: #0f172a; --muted: #64748b;
+        --border: #e2e8f0; --accent: #2563eb; --accent-fg: #ffffff;
+        --ok: #16a34a; --ok-bg: #dcfce7; --warn: #b45309; --warn-bg: #fef3c7;
+        --dim: #64748b; --dim-bg: #e2e8f0; --err: #dc2626; --field: #f8fafc;
+      }
+      [data-theme="dark"] {
+        --bg: #0b1120; --card: #131c31; --fg: #e2e8f0; --muted: #94a3b8;
+        --border: #24304d; --accent: #3b82f6; --accent-fg: #ffffff;
+        --ok: #4ade80; --ok-bg: #14331f; --warn: #fbbf24; --warn-bg: #3a2c08;
+        --dim: #94a3b8; --dim-bg: #24304d; --err: #f87171; --field: #0f1728;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif;
+        background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased;
+      }
+      code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+      a { color: var(--accent); }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+      .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: -0.01em; }
+      .brand .dot { color: var(--muted); font-weight: 600; }
+      button {
+        font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--card);
+        color: var(--fg); border-radius: 8px; padding: 8px 14px; transition: background 0.15s;
+      }
+      button:hover { background: var(--field); }
+      button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+      button.primary:hover { filter: brightness(1.05); }
+      button:disabled { opacity: 0.6; cursor: default; }
+      input, select {
+        font: inherit; width: 100%; padding: 10px 12px; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--field); color: var(--fg);
+      }
+      label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+      .err { color: var(--err); font-size: 14px; margin: 10px 0 0; min-height: 18px; }
+
+      /* Login */
+      #login { max-width: 360px; margin: 12vh auto 0; }
+      #login .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+      #login h1 { font-size: 20px; margin: 4px 0 4px; }
+      #login p.sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+      #login .row { display: flex; gap: 8px; margin-top: 14px; }
+
+      /* Dashboard */
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+      .topbar .actions { display: flex; gap: 8px; }
+      .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+      .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+      .stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      .stat .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+      @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+      .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+      .tab { border: none; background: none; padding: 10px 4px; margin-right: 16px; color: var(--muted); border-bottom: 2px solid transparent; border-radius: 0; }
+      .tab:hover { background: none; color: var(--fg); }
+      .tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+
+      .filters { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+      .filters > div { flex: 1; min-width: 150px; }
+
+      .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+      table { border-collapse: collapse; width: 100%; font-size: 14px; }
+      th, td { text-align: left; padding: 10px 14px; white-space: nowrap; }
+      th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--border); }
+      tr + tr td { border-top: 1px solid var(--border); }
+      td.amt { text-align: right; font-variant-numeric: tabular-nums; }
+      .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+      .badge.paid { background: var(--ok-bg); color: var(--ok); }
+      .badge.pending { background: var(--warn-bg); color: var(--warn); }
+      .badge.expired { background: var(--dim-bg); color: var(--dim); }
+      .empty { color: var(--muted); text-align: center; padding: 32px; }
+
+      .mcard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+      .mcard h3 { margin: 0 0 2px; font-size: 16px; }
+      .mcard .mid { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+      .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; align-items: center; font-size: 14px; }
+      .kv .key { color: var(--muted); }
+      .kv .val { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .kv .val code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .copy { font-size: 12px; padding: 3px 8px; flex: none; }
+      @media (max-width: 560px) { .kv { grid-template-columns: 1fr; gap: 2px 0; } .kv .key { margin-top: 8px; } }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <!-- LOGIN -->
+      <section id="login" class="hidden">
+        <div class="card">
+          <div class="brand">QRIS <span class="dot">Payment</span></div>
+          <h1>Admin</h1>
+          <p class="sub" id="login-sub">Masuk untuk memantau transaksi & integrasi.</p>
+          <form id="login-form">
+            <label for="pw">Password admin</label>
+            <input id="pw" type="password" autocomplete="current-password" autofocus />
+            <p class="err" id="login-err"></p>
+            <div class="row">
+              <button type="submit" class="primary" style="flex:1" id="login-btn">Masuk</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section id="dash" class="hidden">
+        <div class="topbar">
+          <div class="brand">QRIS <span class="dot">Payment</span> · Admin</div>
+          <div class="actions">
+            <button id="refresh">↻ Refresh</button>
+            <button id="logout">Keluar</button>
+          </div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="txn">Transaksi</button>
+          <button class="tab" data-tab="integrasi">Integrasi</button>
+        </div>
+
+        <div id="tab-txn">
+          <div class="filters">
+            <div>
+              <label for="f-merchant">Merchant</label>
+              <select id="f-merchant"><option value="">Semua merchant</option></select>
+            </div>
+            <div>
+              <label for="f-status">Status</label>
+              <select id="f-status">
+                <option value="">Semua status</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+          </div>
+          <p class="err" id="txn-err"></p>
+          <div class="tablewrap"><div id="txn-body"></div></div>
+        </div>
+
+        <div id="tab-integrasi" class="hidden">
+          <p class="err" id="int-err"></p>
+          <div id="int-body"></div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        var $ = function (id) { return document.getElementById(id); };
+        var esc = function (s) {
+          return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+          });
+        };
+        var rupiah = function (n) { return "Rp" + Number(n || 0).toLocaleString("id-ID"); };
+        var when = function (ms) {
+          return ms ? new Date(ms).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" }) : "—";
+        };
+
+        async function api(path, opts) {
+          var res = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" } }, opts));
+          var body = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw Object.assign(new Error(body.error || res.statusText), { status: res.status });
+          return body;
+        }
+
+        function show(view) {
+          $("login").classList.toggle("hidden", view !== "login");
+          $("dash").classList.toggle("hidden", view !== "dash");
+        }
+
+        // ---- Login ----
+        $("login-form").addEventListener("submit", async function (e) {
+          e.preventDefault();
+          $("login-err").textContent = "";
+          $("login-btn").disabled = true;
+          try {
+            await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password: $("pw").value }) });
+            $("pw").value = "";
+            await enterDashboard();
+          } catch (err) {
+            $("login-err").textContent = err.status === 429 ? "Terlalu banyak percobaan, coba lagi nanti." : "Password salah.";
+          } finally {
+            $("login-btn").disabled = false;
+          }
+        });
+
+        $("logout").addEventListener("click", async function () {
+          try { await api("/api/admin/logout", { method: "POST" }); } catch (e) {}
+          stopAuto();
+          show("login");
+          $("pw").focus();
+        });
+
+        // ---- Tabs ----
+        Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+          t.addEventListener("click", function () {
+            document.querySelectorAll(".tab").forEach(function (x) { x.classList.remove("active"); });
+            t.classList.add("active");
+            var tab = t.getAttribute("data-tab");
+            $("tab-txn").classList.toggle("hidden", tab !== "txn");
+            $("tab-integrasi").classList.toggle("hidden", tab !== "integrasi");
+            if (tab === "integrasi") loadMerchants();
+          });
+        });
+
+        $("f-merchant").addEventListener("change", loadInvoices);
+        $("f-status").addEventListener("change", loadInvoices);
+        $("refresh").addEventListener("click", function () { loadStats(); loadInvoices(); });
+
+        // ---- Data ----
+        var merchantsCache = null;
+
+        async function loadStats() {
+          try {
+            var s = await api("/api/admin/stats");
+            $("stats").innerHTML =
+              stat("Pending", s.pending) +
+              stat("Lunas hari ini", s.paidToday) +
+              stat("Omzet hari ini", rupiah(s.revenueToday)) +
+              stat("Total lunas", s.paidTotal);
+          } catch (e) { if (e.status === 401) return show("login"); }
+        }
+        function stat(k, v) {
+          return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + "</div></div>";
+        }
+
+        async function ensureMerchantFilter() {
+          if (merchantsCache) return;
+          try {
+            var list = await api("/api/admin/merchants");
+            merchantsCache = list;
+            var sel = $("f-merchant");
+            list.forEach(function (m) {
+              var o = document.createElement("option");
+              o.value = m.id; o.textContent = m.name;
+              sel.appendChild(o);
+            });
+          } catch (e) {}
+        }
+
+        async function loadInvoices() {
+          $("txn-err").textContent = "";
+          var qs = [];
+          if ($("f-merchant").value) qs.push("merchantId=" + encodeURIComponent($("f-merchant").value));
+          if ($("f-status").value) qs.push("status=" + encodeURIComponent($("f-status").value));
+          try {
+            var rows = await api("/api/admin/invoices" + (qs.length ? "?" + qs.join("&") : ""));
+            renderInvoices(rows);
+          } catch (e) {
+            if (e.status === 401) return show("login");
+            $("txn-err").textContent = e.message;
+          }
+        }
+
+        function mName(id) {
+          var m = merchantsCache && merchantsCache.find(function (x) { return x.id === id; });
+          return m ? m.name : id;
+        }
+
+        function renderInvoices(rows) {
+          if (!rows.length) { $("txn-body").innerHTML = '<p class="empty">Tidak ada transaksi.</p>'; return; }
+          var multi = merchantsCache && merchantsCache.length > 1;
+          var head = "<tr><th>Waktu</th>" + (multi ? "<th>Merchant</th>" : "") +
+            "<th>ID</th><th>Order</th><th>Status</th><th style='text-align:right'>Base</th><th style='text-align:right'>Dibayar</th></tr>";
+          var body = rows.map(function (r) {
+            return "<tr>" +
+              "<td>" + esc(when(r.paidAt || r.createdAt)) + "</td>" +
+              (multi ? "<td>" + esc(mName(r.merchantId)) + "</td>" : "") +
+              "<td><code>" + esc(r.id.slice(0, 10)) + "</code></td>" +
+              "<td>" + (r.orderId ? esc(r.orderId) : "—") + "</td>" +
+              "<td><span class='badge " + esc(r.status) + "'>" + esc(r.status) + "</span></td>" +
+              "<td class='amt'>" + esc(rupiah(r.baseAmount)) + "</td>" +
+              "<td class='amt'>" + esc(rupiah(r.uniqueAmount)) + "</td>" +
+              "</tr>";
+          }).join("");
+          $("txn-body").innerHTML = "<table><thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
+        }
+
+        async function loadMerchants() {
+          $("int-err").textContent = "";
+          try {
+            var list = await api("/api/admin/merchants");
+            merchantsCache = list;
+            renderMerchants(list);
+          } catch (e) {
+            if (e.status === 401) return show("login");
+            $("int-err").textContent = e.message;
+          }
+        }
+
+        function row(key, value, mono) {
+          var v = mono
+            ? "<code>" + esc(value) + "</code>"
+            : "<span class='mono' style='overflow:hidden;text-overflow:ellipsis'>" + esc(value) + "</span>";
+          return "<div class='key'>" + esc(key) + "</div><div class='val'>" + v +
+            "<button class='copy' data-copy=\"" + esc(value) + "\">Salin</button></div>";
+        }
+
+        function renderMerchants(list) {
+          $("int-body").innerHTML = list.map(function (m) {
+            var curl =
+              "curl -X POST " + m.posCreateUrl +
+              " -H 'X-API-Key: " + m.apiKey + "'" +
+              " -H 'Content-Type: application/json'" +
+              " -d '{\"amount\":25000}'";
+            return "<div class='mcard'>" +
+              "<h3>" + esc(m.name) + "</h3><div class='mid'>id: <code>" + esc(m.id) + "</code></div>" +
+              "<div class='kv'>" +
+                row("X-API-Key", m.apiKey, true) +
+                row("Webhook URL", m.webhookUrl, false) +
+                row("Checkout", m.checkoutUrl, false) +
+                row("POS create", m.posCreateUrl, false) +
+                row("Contoh cURL", curl, false) +
+              "</div></div>";
+          }).join("");
+          Array.prototype.forEach.call($("int-body").querySelectorAll(".copy"), function (b) {
+            b.addEventListener("click", function () {
+              navigator.clipboard.writeText(b.getAttribute("data-copy")).then(function () {
+                var old = b.textContent; b.textContent = "✓"; setTimeout(function () { b.textContent = old; }, 1200);
+              });
+            });
+          });
+        }
+
+        // ---- Auto refresh (txn tab only) ----
+        var timer = null;
+        function startAuto() {
+          stopAuto();
+          timer = setInterval(function () {
+            if (!$("tab-txn").classList.contains("hidden")) { loadStats(); loadInvoices(); }
+          }, 15000);
+        }
+        function stopAuto() { if (timer) clearInterval(timer); timer = null; }
+
+        async function enterDashboard() {
+          show("dash");
+          await ensureMerchantFilter();
+          await Promise.all([loadStats(), loadInvoices()]);
+          startAuto();
+        }
+
+        // ---- Boot ----
+        (async function () {
+          try {
+            var me = await api("/api/admin/me");
+            if (!me.enabled) {
+              $("login-sub").textContent = "Konsol admin belum dikonfigurasi. Setel ADMIN_PASSWORD di env lalu restart.";
+              $("pw").disabled = true; $("login-btn").disabled = true;
+              return show("login");
+            }
+            if (me.authed) return enterDashboard();
+          } catch (e) {}
+          show("login");
+        })();
+      })();
+    </script>
+  </body>
+</html>

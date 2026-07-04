@@ -19,6 +19,7 @@ export function buildApp(): { app: express.Express; config: GatewayConfig } {
   const dist = path.resolve("dist");
   app.use(express.static(dist));
   app.get("/", (_req, res) => res.redirect("/checkout.html"));
+  app.get("/admin", (_req, res) => res.redirect("/admin.html"));
 
   return { app, config };
 }

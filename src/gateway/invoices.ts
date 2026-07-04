@@ -160,6 +160,47 @@ export class InvoiceStore {
     return (rows as Row[]).map(rowToInvoice);
   }
 
+  // Admin: all invoices (any status), newest first, optionally filtered.
+  // ponytail: capped at 500 — add pagination if the console outgrows one screen.
+  listAll(filter: { status?: InvoiceStatus; merchantId?: string; limit?: number } = {}): Invoice[] {
+    this.expireStale();
+    const clauses: string[] = [];
+    const params: (string | number)[] = [];
+    if (filter.status) {
+      clauses.push("status=?");
+      params.push(filter.status);
+    }
+    if (filter.merchantId) {
+      clauses.push("merchant_id=?");
+      params.push(filter.merchantId);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = Math.min(Math.max(filter.limit ?? 200, 1), 500);
+    const rows = this.db
+      .prepare(`SELECT * FROM invoices ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit);
+    return (rows as Row[]).map(rowToInvoice);
+  }
+
+  // Admin: headline counts for the dashboard. "Today" = server-local midnight.
+  stats(): { pending: number; paidToday: number; revenueToday: number; paidTotal: number } {
+    this.expireStale();
+    const midnight = new Date(this.now());
+    midnight.setHours(0, 0, 0, 0);
+    const t0 = midnight.getTime();
+    const one = (sql: string, ...p: (string | number)[]) =>
+      (this.db.prepare(sql).get(...p) as { v: number }).v;
+    return {
+      pending: one(`SELECT COUNT(*) v FROM invoices WHERE status='pending'`),
+      paidToday: one(`SELECT COUNT(*) v FROM invoices WHERE status='paid' AND paid_at>=?`, t0),
+      revenueToday: one(
+        `SELECT COALESCE(SUM(unique_amount),0) v FROM invoices WHERE status='paid' AND paid_at>=?`,
+        t0
+      ),
+      paidTotal: one(`SELECT COUNT(*) v FROM invoices WHERE status='paid'`),
+    };
+  }
+
   settle(merchantId: string, amount: number): Invoice | null {
     this.expireStale();
     const match = selectMatch(this.pendingForMerchant(merchantId), amount);
