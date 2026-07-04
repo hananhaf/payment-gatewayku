@@ -12,7 +12,7 @@
     "start": "tsx src/main.ts",
     "gateway": "tsx src/main.ts",
     "gateway:dev": "tsx watch src/main.ts",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test --test-concurrency=1 src/**/*.test.ts"
   },
   "keywords": [
     "qris",
@@ -34,6 +34,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsqr": "^1.4.0",
+    "mysql2": "^3.22.5",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
