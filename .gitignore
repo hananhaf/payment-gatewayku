@@ -15,3 +15,5 @@ dist-server
 
 # Real merchant config (secrets + QRIS) — never commit
 merchants.json
+*.local.sql
+CLAUDE.md
