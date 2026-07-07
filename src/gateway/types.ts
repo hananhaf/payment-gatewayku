@@ -1,11 +1,18 @@
 export type InvoiceStatus = "pending" | "paid" | "expired";
 
+/** How the customer pays. Both settle via the same unique-amount matching. */
+export type PaymentMethod = "qris" | "bank_transfer";
+
 export interface Merchant {
   id: string;
   name: string;
   qris: string;
   apiKey: string;
   active?: boolean;
+  /** Optional bank account for the "bank_transfer" method. */
+  bankName?: string | null;
+  bankAccount?: string | null;
+  bankHolder?: string | null;
 }
 
 export interface Invoice {
@@ -13,7 +20,10 @@ export interface Invoice {
   merchantId: string;
   baseAmount: number;
   uniqueAmount: number;
+  /** QRIS payload for method "qris"; empty string for "bank_transfer". */
   qrString: string;
+  /** Payment channel; "bank_transfer" shows a bank account instead of a QR. */
+  method: PaymentMethod;
   status: InvoiceStatus;
   createdAt: number;
   expiresAt: number;
@@ -29,6 +39,7 @@ export interface CreateInvoiceOptions {
   orderId?: string;
   callbackUrl?: string;
   idempotencyKey?: string;
+  method?: PaymentMethod;
 }
 
 export interface NotificationAuditInput {

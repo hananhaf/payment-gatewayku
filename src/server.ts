@@ -136,9 +136,19 @@ export function createServer(store: InvoiceStore, merchants: Merchant[] = []) {
     res.json({ status: "OK" });
   });
 
-  // Public: merchant directory for the checkout page (id + name only)
+  // Public: merchant directory for the checkout page. Includes available payment
+  // methods and (if configured) the bank account to show for bank transfers.
   app.get("/api/merchants", async (_req, res) => {
-    res.json((await listMerchants()).map((m) => ({ id: m.id, name: m.name })));
+    res.json(
+      (await listMerchants()).map((m) => ({
+        id: m.id,
+        name: m.name,
+        methods: m.bankAccount ? ["qris", "bank_transfer"] : ["qris"],
+        bank: m.bankAccount
+          ? { name: m.bankName ?? null, account: m.bankAccount, holder: m.bankHolder ?? null }
+          : null,
+      }))
+    );
   });
 
   // Public: create an invoice (self-service checkout page).
@@ -163,8 +173,9 @@ export function createServer(store: InvoiceStore, merchants: Merchant[] = []) {
       res.status(400).json({ error: "amount must be a positive integer (rupiah)" });
       return;
     }
+    const method = req.body?.method === "bank_transfer" ? ("bank_transfer" as const) : undefined;
     try {
-      res.json(publicView(await store.create(merchantId, amount)));
+      res.json(publicView(await store.create(merchantId, amount, { method })));
     } catch (e) {
       res.status(503).json({ error: (e as Error).message });
     }
@@ -194,6 +205,7 @@ export function createServer(store: InvoiceStore, merchants: Merchant[] = []) {
         orderId: typeof req.body?.orderId === "string" ? req.body.orderId : undefined,
         callbackUrl,
         idempotencyKey: typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey : undefined,
+        method: req.body?.method === "bank_transfer" ? "bank_transfer" : undefined,
       });
       res.json({ ...publicView(inv), payUrl: payUrl(req, inv.id) });
     } catch (e) {

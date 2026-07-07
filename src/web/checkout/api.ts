@@ -1,6 +1,16 @@
-import type { Invoice } from "../../gateway/types";
+import type { Invoice, PaymentMethod } from "../../gateway/types";
 
-export interface MerchantOption { id: string; name: string; }
+export interface BankInfo {
+  name: string | null;
+  account: string;
+  holder: string | null;
+}
+export interface MerchantOption {
+  id: string;
+  name: string;
+  methods: PaymentMethod[];
+  bank: BankInfo | null;
+}
 
 export async function getMerchants(): Promise<MerchantOption[]> {
   const res = await fetch("/api/merchants");
@@ -8,11 +18,15 @@ export async function getMerchants(): Promise<MerchantOption[]> {
   return res.json();
 }
 
-export async function createInvoice(merchantId: string, amount: number): Promise<Invoice> {
+export async function createInvoice(
+  merchantId: string,
+  amount: number,
+  method: PaymentMethod = "qris"
+): Promise<Invoice> {
   const res = await fetch("/api/invoices", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ merchantId, amount }),
+    body: JSON.stringify({ merchantId, amount, method }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

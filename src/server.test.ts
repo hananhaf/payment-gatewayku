@@ -66,7 +66,10 @@ const j = (extra: object = {}) => ({ headers: { "Content-Type": "application/jso
 serial("GET /api/merchants lists id+name only (no qris/apiKey)", async () => {
   await withServer(async (base) => {
     const body = await (await fetch(`${base}/api/merchants`)).json();
-    assert.deepEqual(body, [{ id: "a", name: "Merchant A" }, { id: "b", name: "Merchant B" }]);
+    assert.deepEqual(body, [
+      { id: "a", name: "Merchant A", methods: ["qris"], bank: null },
+      { id: "b", name: "Merchant B", methods: ["qris"], bank: null },
+    ]);
     assert.ok(!JSON.stringify(body).includes("key-a"));
     assert.ok(!JSON.stringify(body).includes(QRIS));
   });
@@ -187,7 +190,9 @@ serial("server can use merchants managed in MySQL without env/file merchants", a
   const { port } = server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
   try {
-    assert.deepEqual(await (await fetch(`${base}/api/merchants`)).json(), [{ id: "dbm", name: "DB Merchant" }]);
+    assert.deepEqual(await (await fetch(`${base}/api/merchants`)).json(), [
+      { id: "dbm", name: "DB Merchant", methods: ["qris"], bank: null },
+    ]);
     const res = await fetch(`${base}/api/pos/invoices`, {
       method: "POST",
       ...j({ "X-API-Key": "db-key" }),

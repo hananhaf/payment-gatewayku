@@ -321,6 +321,78 @@ body {
   background: rgba(255, 255, 255, 0.82);
 }
 
+/* ---------- payment method toggle (form) ---------- */
+.method-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.method-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  font-family: var(--font);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.method-opt:hover { border-color: var(--border-strong); color: var(--text); }
+.method-opt.on {
+  color: var(--brand-strong);
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.method-opt:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--brand-ring); }
+
+/* ---------- bank transfer instruction panel (invoice view) ---------- */
+.bank-panel {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 18px 16px;
+  margin-bottom: 18px;
+  position: relative;
+}
+.bank-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.bank-account {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  word-break: break-all;
+}
+.bank-holder {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+.bank-panel .copy-btn { margin-bottom: 0; }
+.bank-panel.done::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  background: rgba(127, 127, 127, 0.14);
+}
+
 /* status pill */
 .status {
   display: inline-flex;

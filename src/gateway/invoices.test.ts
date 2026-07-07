@@ -114,3 +114,27 @@ test("same unique amount across two merchants settles only the intended one (det
   assert.equal((await s.get(a.id))?.status, "paid");
   assert.equal((await s.get(b.id))?.status, "pending"); // b MUST be untouched
 });
+
+test("bank_transfer: creates an invoice with no QR when the merchant has a bank account", async () => {
+  const bank: Merchant = {
+    id: "c", name: "C", qris: QRIS, apiKey: "kc",
+    bankName: "BCA", bankAccount: "1234567890", bankHolder: "Toko C",
+  };
+  const s = new InvoiceStore(pool, { merchants: [bank], port: 0, invoiceTtlMs: 600000, maxOffset: 999, dbPath: ":memory:" });
+  const inv = await s.create("c", 25000, { method: "bank_transfer" });
+  assert.equal(inv.method, "bank_transfer");
+  assert.equal(inv.qrString, "");
+  assert.ok(inv.uniqueAmount > 25000);
+  assert.equal((await s.get(inv.id))?.method, "bank_transfer");
+});
+
+test("bank_transfer: rejected when the merchant has no bank account", async () => {
+  const s = store();
+  await assert.rejects(() => s.create("a", 25000, { method: "bank_transfer" }), /bank transfer unavailable/i);
+});
+
+test("default method is qris (with a QR)", async () => {
+  const inv = await store().create("a", 25000);
+  assert.equal(inv.method, "qris");
+  assert.ok(inv.qrString.length > 0);
+});

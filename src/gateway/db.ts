@@ -47,11 +47,17 @@ export async function openDb(cfg: DbConfig): Promise<mysql.Pool> {
       qris        TEXT         NOT NULL,
       api_key     VARCHAR(128) NOT NULL,
       active      TINYINT(1)   NOT NULL DEFAULT 1,
+      bank_name    VARCHAR(64)  NULL,
+      bank_account VARCHAR(64)  NULL,
+      bank_holder  VARCHAR(191) NULL,
       created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       PRIMARY KEY (id),
       UNIQUE KEY uq_merchant_apikey (api_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  await ensureColumn(pool, "merchants", "bank_name", "bank_name VARCHAR(64) NULL");
+  await ensureColumn(pool, "merchants", "bank_account", "bank_account VARCHAR(64) NULL");
+  await ensureColumn(pool, "merchants", "bank_holder", "bank_holder VARCHAR(191) NULL");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS invoices (
@@ -61,6 +67,7 @@ export async function openDb(cfg: DbConfig): Promise<mysql.Pool> {
       unique_amount    BIGINT UNSIGNED NOT NULL,
       qr_string        TEXT         NOT NULL,
       status           ENUM('pending','paid','expired') NOT NULL DEFAULT 'pending',
+      method           VARCHAR(16)  NOT NULL DEFAULT 'qris',
       order_id         VARCHAR(191) NULL,
       callback_url     VARCHAR(512) NULL,
       idempotency_key  VARCHAR(191) NULL,
@@ -74,6 +81,7 @@ export async function openDb(cfg: DbConfig): Promise<mysql.Pool> {
       UNIQUE KEY uq_idem (merchant_id, idempotency_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+  await ensureColumn(pool, "invoices", "method", "method VARCHAR(16) NOT NULL DEFAULT 'qris' AFTER status");
   await migrateInvoiceTimestamps(pool);
 
   // Audit log of every forwarded notification and whether it settled an invoice.

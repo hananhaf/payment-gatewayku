@@ -10,6 +10,7 @@ function inv(partial: Partial<Invoice>): Invoice {
     baseAmount: 25000,
     uniqueAmount: 25037,
     qrString: "q",
+    method: "qris",
     status: "pending",
     createdAt: 1,
     expiresAt: 999999,

@@ -9,7 +9,10 @@ import type {
   InvoiceStatus,
   Merchant,
   NotificationAuditInput,
+  PaymentMethod,
 } from "./types.ts";
+
+const MERCHANT_COLS = "id, name, qris, api_key, active, bank_name, bank_account, bank_holder";
 
 interface Row extends RowDataPacket {
   id: string;
@@ -17,6 +20,7 @@ interface Row extends RowDataPacket {
   base_amount: number;
   unique_amount: number;
   qr_string: string;
+  method: string;
   status: string;
   order_id: string | null;
   callback_url: string | null;
@@ -31,6 +35,9 @@ interface MerchantRow extends RowDataPacket {
   qris: string;
   api_key: string;
   active: 0 | 1;
+  bank_name: string | null;
+  bank_account: string | null;
+  bank_holder: string | null;
 }
 
 function toDate(ms: number): Date {
@@ -50,6 +57,7 @@ function rowToInvoice(row: Row): Invoice {
     baseAmount: Number(row.base_amount),
     uniqueAmount: Number(row.unique_amount),
     qrString: row.qr_string,
+    method: (row.method as PaymentMethod) ?? "qris",
     status: row.status as InvoiceStatus,
     createdAt: toMillis(row.created_at),
     expiresAt: toMillis(row.expires_at),
@@ -60,7 +68,16 @@ function rowToInvoice(row: Row): Invoice {
 }
 
 function rowToMerchant(row: MerchantRow): Merchant {
-  return { id: row.id, name: row.name, qris: row.qris, apiKey: row.api_key, active: Boolean(row.active) };
+  return {
+    id: row.id,
+    name: row.name,
+    qris: row.qris,
+    apiKey: row.api_key,
+    active: Boolean(row.active),
+    bankName: row.bank_name ?? null,
+    bankAccount: row.bank_account ?? null,
+    bankHolder: row.bank_holder ?? null,
+  };
 }
 
 /** MySQL-backed invoice store. All methods are async. */
@@ -76,7 +93,7 @@ export class InvoiceStore {
       return this.config.merchants.filter((m) => m.active !== false);
     }
     const [rows] = await this.pool.query<MerchantRow[]>(
-      `SELECT id, name, qris, api_key, active FROM merchants WHERE active=1 ORDER BY id`
+      `SELECT ${MERCHANT_COLS} FROM merchants WHERE active=1 ORDER BY id`
     );
     return rows.map(rowToMerchant);
   }
@@ -86,7 +103,7 @@ export class InvoiceStore {
       return this.config.merchants.find((m) => m.id === id && m.active !== false) ?? null;
     }
     const [rows] = await this.pool.query<MerchantRow[]>(
-      `SELECT id, name, qris, api_key, active FROM merchants WHERE id=? AND active=1 LIMIT 1`,
+      `SELECT ${MERCHANT_COLS} FROM merchants WHERE id=? AND active=1 LIMIT 1`,
       [id]
     );
     return rows[0] ? rowToMerchant(rows[0]) : null;
@@ -97,7 +114,7 @@ export class InvoiceStore {
       return this.config.merchants.find((m) => m.apiKey === apiKey && m.active !== false) ?? null;
     }
     const [rows] = await this.pool.query<MerchantRow[]>(
-      `SELECT id, name, qris, api_key, active FROM merchants WHERE api_key=? AND active=1 LIMIT 1`,
+      `SELECT ${MERCHANT_COLS} FROM merchants WHERE api_key=? AND active=1 LIMIT 1`,
       [apiKey]
     );
     return rows[0] ? rowToMerchant(rows[0]) : null;
@@ -144,6 +161,10 @@ export class InvoiceStore {
     const orderId = opts.orderId?.trim() || null;
     const callbackUrl = opts.callbackUrl?.trim() || null;
     const idempotencyKey = opts.idempotencyKey?.trim() || null;
+    const method: PaymentMethod = opts.method === "bank_transfer" ? "bank_transfer" : "qris";
+    if (method === "bank_transfer" && !merchant.bankAccount) {
+      throw new Error("bank transfer unavailable: this merchant has no bank account configured");
+    }
 
     if (idempotencyKey) {
       const existing = await this.findByIdempotency(merchantId, idempotencyKey);
@@ -169,7 +190,8 @@ export class InvoiceStore {
       merchantId,
       baseAmount,
       uniqueAmount,
-      qrString: convertQRIS(merchant.qris, { amount: uniqueAmount }),
+      qrString: method === "qris" ? convertQRIS(merchant.qris, { amount: uniqueAmount }) : "",
+      method,
       status: "pending",
       createdAt: now,
       expiresAt: now + this.config.invoiceTtlMs,
@@ -180,10 +202,10 @@ export class InvoiceStore {
 
     await this.pool.query(
       `INSERT INTO invoices
-         (id, merchant_id, base_amount, unique_amount, qr_string, status, created_at, expires_at, paid_at,
+         (id, merchant_id, base_amount, unique_amount, qr_string, method, status, created_at, expires_at, paid_at,
           order_id, callback_url, idempotency_key, callback_sent)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`,
-      [invoice.id, merchantId, baseAmount, uniqueAmount, invoice.qrString, "pending",
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
+      [invoice.id, merchantId, baseAmount, uniqueAmount, invoice.qrString, method, "pending",
        toDate(now), toDate(invoice.expiresAt), null, orderId, callbackUrl, idempotencyKey]
     );
 

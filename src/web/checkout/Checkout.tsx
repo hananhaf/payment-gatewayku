@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { createInvoice, getInvoice, getMerchants, type MerchantOption } from "./api";
-import type { Invoice } from "../../gateway/types";
+import { createInvoice, getInvoice, getMerchants, type BankInfo, type MerchantOption } from "./api";
+import type { Invoice, PaymentMethod } from "../../gateway/types";
 
 const rupiah = (n: number) => n.toLocaleString("id-ID");
 
@@ -15,6 +15,7 @@ export function Checkout() {
   const [merchants, setMerchants] = useState<MerchantOption[]>([]);
   const [merchantId, setMerchantId] = useState("");
   const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("qris");
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -49,14 +50,14 @@ export function Checkout() {
       .finally(() => setBooting(false));
   }, []);
 
-  // Render QR whenever the (pending/expired) invoice's payload is shown.
+  // Render QR whenever the (pending/expired) QRIS invoice's payload is shown.
   useEffect(() => {
-    if (invoice && invoice.status !== "paid" && canvasRef.current) {
+    if (invoice && invoice.method === "qris" && invoice.status !== "paid" && canvasRef.current) {
       QRCode.toCanvas(canvasRef.current, invoice.qrString, { width: 232, margin: 0 }).catch(() =>
         setError("Gagal membuat QR")
       );
     }
-  }, [invoice?.qrString, invoice?.status]);
+  }, [invoice?.qrString, invoice?.status, invoice?.method]);
 
   // Poll status + tick the countdown while pending.
   useEffect(() => {
@@ -83,7 +84,7 @@ export function Checkout() {
     setError("");
     setCreating(true);
     try {
-      const inv = await createInvoice(merchantId, Number(amount));
+      const inv = await createInvoice(merchantId, Number(amount), canBank ? method : "qris");
       setNow(Date.now());
       setInvoice(inv);
     } catch (err) {
@@ -107,11 +108,14 @@ export function Checkout() {
   function reset() {
     setInvoice(null);
     setAmount("");
+    setMethod("qris");
     setCopied(false);
     setError("");
   }
 
   const merchantName = (id: string) => merchants.find((m) => m.id === id)?.name ?? id;
+  const selected = merchants.find((m) => m.id === merchantId);
+  const canBank = selected?.methods?.includes("bank_transfer") ?? false;
 
   // ---------- Loading a pre-created invoice (?invoice=) ----------
   if (booting && !invoice) {
@@ -174,9 +178,16 @@ export function Checkout() {
             {copied ? <CheckIcon /> : <CopyIcon />} {copied ? "Tersalin" : "Salin nominal"}
           </button>
 
-          <div className={`qr-panel${expired ? " done" : ""}`}>
-            <canvas ref={canvasRef} width={232} height={232} />
-          </div>
+          {invoice.method === "bank_transfer" ? (
+            <BankPanel
+              bank={merchants.find((m) => m.id === invoice.merchantId)?.bank ?? null}
+              expired={expired}
+            />
+          ) : (
+            <div className={`qr-panel${expired ? " done" : ""}`}>
+              <canvas ref={canvasRef} width={232} height={232} />
+            </div>
+          )}
 
           {expired ? (
             <div className="status expired">
@@ -198,7 +209,11 @@ export function Checkout() {
             {expired ? "Buat Transaksi Baru" : "Batalkan"}
           </button>
         </section>
-        <p className="hint">Pindai dengan aplikasi apa pun berlogo QRIS</p>
+        <p className="hint">
+          {invoice.method === "bank_transfer"
+            ? "Transfer tepat ke rekening di atas, sesuai nominal"
+            : "Pindai dengan aplikasi apa pun berlogo QRIS"}
+        </p>
       </main>
     );
   }
@@ -217,7 +232,10 @@ export function Checkout() {
             id="merchant"
             className="select"
             value={merchantId}
-            onChange={(e) => setMerchantId(e.target.value)}
+            onChange={(e) => {
+              setMerchantId(e.target.value);
+              setMethod("qris");
+            }}
             required
           >
             {merchants.length === 0 && <option value="">Memuat…</option>}
@@ -226,6 +244,32 @@ export function Checkout() {
             ))}
           </select>
         </div>
+
+        {canBank && (
+          <div className="field">
+            <label>Metode Pembayaran</label>
+            <div className="method-toggle" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={method === "qris"}
+                className={`method-opt${method === "qris" ? " on" : ""}`}
+                onClick={() => setMethod("qris")}
+              >
+                <QrIcon /> QRIS
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={method === "bank_transfer"}
+                className={`method-opt${method === "bank_transfer" ? " on" : ""}`}
+                onClick={() => setMethod("bank_transfer")}
+              >
+                <BankIcon /> Transfer Bank
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="amount">Nominal</label>
@@ -245,8 +289,18 @@ export function Checkout() {
         </div>
 
         <button className="btn btn-primary" type="submit" disabled={!merchantId || creating}>
-          {creating ? <span className="spinner" aria-hidden="true" /> : <QrIcon />}
-          {creating ? "Membuat…" : "Buat QR Pembayaran"}
+          {creating ? (
+            <span className="spinner" aria-hidden="true" />
+          ) : canBank && method === "bank_transfer" ? (
+            <BankIcon />
+          ) : (
+            <QrIcon />
+          )}
+          {creating
+            ? "Membuat…"
+            : canBank && method === "bank_transfer"
+              ? "Buat Instruksi Transfer"
+              : "Buat QR Pembayaran"}
         </button>
 
         {error && (
@@ -306,3 +360,35 @@ const QrIcon = () => (
 const AlertIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>
 );
+const BankIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
+    <path d="M3 10 12 4l9 6M4 10v9M20 10v9M8 10v9M16 10v9M3 21h18" />
+  </svg>
+);
+
+/** Bank-transfer instruction panel — shows the destination account instead of a QR. */
+function BankPanel({ bank, expired }: { bank: BankInfo | null; expired: boolean }) {
+  const [copied, setCopied] = useState(false);
+  if (!bank) {
+    return <div className="bank-panel"><p className="empty">Rekening tidak tersedia</p></div>;
+  }
+  async function copyAccount() {
+    try {
+      await navigator.clipboard.writeText(bank!.account.replace(/\s+/g, ""));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+  return (
+    <div className={`bank-panel${expired ? " done" : ""}`}>
+      {bank.name && <div className="bank-name"><BankIcon /> {bank.name}</div>}
+      <div className="bank-account">{bank.account}</div>
+      {bank.holder && <div className="bank-holder">a.n. {bank.holder}</div>}
+      <button type="button" className={`copy-btn${copied ? " copied" : ""}`} onClick={copyAccount}>
+        {copied ? <CheckIcon /> : <CopyIcon />} {copied ? "Tersalin" : "Salin no. rekening"}
+      </button>
+    </div>
+  );
+}

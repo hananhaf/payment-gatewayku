@@ -30,12 +30,16 @@ export function validateMerchants(list: unknown, source: string): Merchant[] {
     const apiKey = (m.apiKey as string).trim();
     if (seenKeys.has(apiKey)) throw new Error(`${source}: duplicate apiKey for merchant "${id}"`);
     seenKeys.add(apiKey);
+    const optStr = (k: string) => (typeof m[k] === "string" && (m[k] as string).trim() ? (m[k] as string).trim() : null);
     return {
       id,
       name: (m.name as string).trim(),
       qris,
       apiKey,
       active: typeof m.active === "boolean" ? m.active : undefined,
+      bankName: optStr("bankName"),
+      bankAccount: optStr("bankAccount"),
+      bankHolder: optStr("bankHolder"),
     };
   });
 }
@@ -103,6 +107,9 @@ interface MerchantRow extends RowDataPacket {
   qris: string;
   api_key: string;
   active: 0 | 1;
+  bank_name: string | null;
+  bank_account: string | null;
+  bank_holder: string | null;
 }
 
 function rowToMerchant(row: MerchantRow): Merchant {
@@ -112,12 +119,16 @@ function rowToMerchant(row: MerchantRow): Merchant {
     qris: row.qris,
     apiKey: row.api_key,
     active: Boolean(row.active),
+    bankName: row.bank_name ?? null,
+    bankAccount: row.bank_account ?? null,
+    bankHolder: row.bank_holder ?? null,
   };
 }
 
 export async function loadActiveMerchantsFromDb(pool: Pool): Promise<Merchant[]> {
   const [rows] = await pool.query<MerchantRow[]>(
-    `SELECT id, name, qris, api_key, active FROM merchants WHERE active=1 ORDER BY id`
+    `SELECT id, name, qris, api_key, active, bank_name, bank_account, bank_holder
+       FROM merchants WHERE active=1 ORDER BY id`
   );
   const merchants = rows.map(rowToMerchant);
   return validateMerchants(merchants, "merchants table");
@@ -139,9 +150,10 @@ export async function seedMerchantsFromEnvIfEmpty(
 
   for (const m of merchants) {
     await pool.query(
-      `INSERT INTO merchants (id, name, qris, api_key, active) VALUES (?, ?, ?, ?, 1)
+      `INSERT INTO merchants (id, name, qris, api_key, active, bank_name, bank_account, bank_holder)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?)
        ON DUPLICATE KEY UPDATE name=VALUES(name), qris=VALUES(qris), api_key=VALUES(api_key), active=1`,
-      [m.id, m.name, m.qris, m.apiKey]
+      [m.id, m.name, m.qris, m.apiKey, m.bankName ?? null, m.bankAccount ?? null, m.bankHolder ?? null]
     );
   }
 }
