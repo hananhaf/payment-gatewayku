@@ -34,6 +34,15 @@ test("parseAmount returns null when no amount present", () => {
   assert.equal(parseAmount({}), null);
 });
 
+test("parseAmount finds the amount in bigText/title when text lacks it (BNI Merchant shape)", () => {
+  assert.equal(parseAmount({ text: null, bigText: "Transaksi Sebesar Rp 1.002 dari BNI telah berhasil" }), 1002);
+  assert.equal(parseAmount({ title: "Rp 25.037 diterima", text: "Pembayaran QRIS" }), 25037);
+});
+
+test("parseAmount tolerates a non-breaking space after 'Rp'", () => {
+  assert.equal(parseAmount({ text: "Transaksi Sebesar Rp 1.002 dari BNI" }), 1002);
+});
+
 test("parseAmount accepts a numeric amountDetected without throwing", () => {
   assert.equal(parseAmount({ amountDetected: 25037 }), 25037);
 });

@@ -2,12 +2,18 @@ import type { Invoice } from "./types.ts";
 
 /**
  * Extract an integer rupiah amount from a forwarded notification payload.
- * Prefers the app's own `amountDetected`; falls back to an "Rp 25.037" match
- * in the notification text.
+ * Prefers the app's own `amountDetected`; otherwise scans ALL notification text
+ * fields (text/bigText/title/subText) for an "Rp 25.037" match. Scanning every
+ * field — not just `text` — matters because banking apps (e.g. BNI Merchant) put
+ * the amount in `bigText`/`title`, and JS `\s` also matches the non-breaking
+ * space they often insert after "Rp", which the Android-side regex misses.
  */
 export function parseAmount(payload: {
   amountDetected?: string | number | null;
   text?: string | null;
+  bigText?: string | null;
+  title?: string | null;
+  subText?: string | null;
 }): number | null {
   const detected = payload.amountDetected;
   if (typeof detected === "number" && Number.isInteger(detected) && detected > 0) {
@@ -17,8 +23,10 @@ export function parseAmount(payload: {
     return Number(detected.trim());
   }
   // Whole-rupiah only; strips '.' and ',' so thousands separators / cents are dropped.
-  const text = typeof payload.text === "string" ? payload.text : "";
-  const m = text.match(/rp\s*([\d.,]+)/i);
+  const haystack = [payload.text, payload.bigText, payload.title, payload.subText]
+    .filter((v): v is string => typeof v === "string")
+    .join(" ");
+  const m = haystack.match(/rp\s*([\d.,]+)/i);
   if (!m) return null;
   const digits = (m[1] ?? "").replace(/[.,]/g, "");
   if (!/^\d+$/.test(digits)) return null;
