@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Unduh Notification Listener — QRIS Payment</title>
+  <meta name="description" content="Unduh aplikasi Notification Listener untuk meneruskan notifikasi pembayaran bank/QRIS ke gateway." />
+  <style>
+    :root {
+      --bg-1: #f8fafc; --bg-2: #eef2f7; --surface: #ffffff; --surface-2: #f8fafc;
+      --text: #0f172a; --muted: #64748b; --border: #e2e8f0; --border-strong: #cbd5e1;
+      --brand: #d97706; --brand-strong: #b45309; --brand-soft: #fef3c7;
+      --ring: rgba(217,119,6,.35); --success: #16a34a;
+      --shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px -12px rgba(15,23,42,.18);
+      --radius: 20px; --radius-sm: 12px;
+      --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-1: #0f172a; --bg-2: #0b1120; --surface: #111a2e; --surface-2: #0f172a;
+        --text: #f8fafc; --muted: #94a3b8; --border: #1e293b; --border-strong: #334155;
+        --brand: #fbbf24; --brand-strong: #f59e0b; --brand-soft: #422006;
+        --ring: rgba(251,191,36,.35); --success: #4ade80;
+        --shadow: 0 1px 2px rgba(0,0,0,.3), 0 20px 40px -16px rgba(0,0,0,.6);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: var(--font); color: var(--text);
+      background: radial-gradient(120% 90% at 50% 0%, var(--bg-1), var(--bg-2));
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+      padding: 28px 16px 40px; -webkit-font-smoothing: antialiased;
+    }
+    .brand {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 22px;
+    }
+    .brand .dot { color: var(--brand-strong); }
+    .card {
+      width: 100%; max-width: 440px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 26px 22px; text-align: center;
+    }
+    .app-icon {
+      width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 16px;
+      display: grid; place-items: center; color: #fff;
+      background: linear-gradient(150deg, var(--brand), var(--brand-strong));
+      box-shadow: 0 8px 20px -8px var(--ring);
+    }
+    @media (prefers-color-scheme: dark) { .app-icon { color: #1a1206; } }
+    h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.02em; }
+    .sub { font-size: 13.5px; color: var(--muted); margin: 0 0 20px; line-height: 1.5; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      width: 100%; height: 54px; border-radius: var(--radius-sm); border: none;
+      font-family: var(--font); font-size: 16px; font-weight: 600; cursor: pointer;
+      text-decoration: none; background: var(--brand); color: #fff;
+      transition: transform .12s ease, background .18s ease;
+    }
+    @media (prefers-color-scheme: dark) { .btn { color: #1a1206; } }
+    .btn:hover { background: var(--brand-strong); }
+    .btn:active { transform: scale(.985); }
+    .meta { font-size: 12px; color: var(--muted); margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+    .steps {
+      text-align: left; margin: 24px 0 0; padding: 20px 18px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    }
+    .steps h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 14px; }
+    ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+    ol li {
+      position: relative; padding: 0 0 16px 38px; counter-increment: s;
+      font-size: 14px; line-height: 1.55;
+    }
+    ol li:last-child { padding-bottom: 0; }
+    ol li::before {
+      content: counter(s); position: absolute; left: 0; top: -1px;
+      width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center;
+      background: var(--brand-soft); color: var(--brand-strong); font-size: 13px; font-weight: 700;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      padding: 1px 6px; word-break: break-all; color: var(--text);
+    }
+    .b { font-weight: 600; }
+    .note {
+      display: flex; gap: 9px; align-items: flex-start; text-align: left;
+      margin: 16px 0 0; padding: 11px 13px; border-radius: 10px;
+      background: var(--brand-soft); color: var(--brand-strong); font-size: 12.5px; line-height: 1.5;
+    }
+    .req { font-size: 12px; color: var(--muted); margin: 16px 0 0; }
+    .home { margin-top: 22px; font-size: 13px; }
+    .home a { color: var(--brand-strong); text-decoration: none; font-weight: 600; }
+    svg { display: block; }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17v.01" />
+    </svg>
+    QRIS <span class="dot">Payment</span>
+  </div>
+
+  <main class="card">
+    <div class="app-icon" aria-hidden="true">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+    </div>
+    <h1>Notification Listener</h1>
+    <p class="sub">Aplikasi Android yang meneruskan notifikasi <span class="b">"dana masuk"</span> dari aplikasi bank/QRIS di HP kasir ke payment gateway — supaya pembayaran tercocokkan otomatis.</p>
+
+    <a class="btn" href="/notification-listener.apk" download>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+      </svg>
+      Unduh APK
+    </a>
+    <p class="meta">Android 8.0+ &middot; ~9.3 MB &middot; tertandatangani</p>
+
+    <section class="steps">
+      <h2>Langkah Pemasangan</h2>
+      <ol>
+        <li>Unduh lalu buka file APK. Jika muncul peringatan, izinkan <span class="b">"Instal aplikasi tak dikenal"</span> untuk browser Anda, lalu lanjutkan.</li>
+        <li>Buka aplikasi <span class="b">Notification Listener</span>.</li>
+        <li>Beri izin <span class="b">Akses Notifikasi</span> saat diminta (Setelan &rarr; Akses notifikasi &rarr; aktifkan aplikasi ini).</li>
+        <li>Isi <span class="b">Endpoint URL</span> dengan alamat webhook merchant Anda:<br><code>https://payment.bppunh.com/webhook/&lt;id-merchant&gt;</code><br>lalu <span class="b">API Key</span> merchant Anda. Simpan.</li>
+        <li>Pastikan HP tetap online dan matikan <span class="b">optimasi baterai</span> untuk aplikasi ini agar terus berjalan di latar belakang.</li>
+      </ol>
+    </section>
+
+    <div class="note">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+      <span>API Key setara password merchant — jangan dibagikan atau dipasang di HP milik orang lain.</span>
+    </div>
+
+    <p class="req">Butuh: Android 8.0+, koneksi internet aktif, dan satu aplikasi bank/e-wallet yang mengirim notifikasi transaksi.</p>
+  </main>
+
+  <p class="home"><a href="/checkout.html">&larr; Kembali ke halaman pembayaran</a></p>
+</body>
+</html>

@@ -25,6 +25,7 @@ export async function buildApp(): Promise<{ app: express.Express; config: Gatewa
   app.use(express.static(dist));
   app.get("/", (_req, res) => res.redirect("/checkout.html"));
   app.get("/admin", (_req, res) => res.redirect("/admin.html"));
+  app.get("/download", (_req, res) => res.redirect("/download.html"));
 
   return { app, config };
 }
